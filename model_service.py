@@ -10,12 +10,12 @@ import joblib
 import pandas as pd
 import sklearn
 
-from model import ROOT, FEATURES, SCHEMA_VERSION, SUBJECTS, load_data, train_and_evaluate
+from model import ROOT, FEATURES, SCHEMA_VERSION, SUBJECTS, PUBLIC_SUBJECTS, load_data, train_and_evaluate
 
 
 def bundle_signature(subject, artifact_dir=ROOT / "artifacts", data_dir=ROOT / "data"):
-    if subject not in SUBJECTS:
-        raise ValueError("Unknown subject.")
+    if subject not in PUBLIC_SUBJECTS:
+        raise ValueError("No bundled dataset for this subject. Upload subject training records in the app.")
     prefix = "" if subject == "mat" else "por_"
     paths = [Path(data_dir) / f"student-{subject}.csv", Path(__file__), ROOT / "model.py"]
     paths += [Path(artifact_dir) / f"{prefix}{name}" for name in ("model.joblib", "metrics.json", "test_predictions.csv")]
@@ -26,8 +26,8 @@ def bundle_signature(subject, artifact_dir=ROOT / "artifacts", data_dir=ROOT / "
 
 def load_bundle(subject, artifact_dir=ROOT / "artifacts", data_dir=ROOT / "data"):
     """A bundle is returned together; recovered models do not require writable artifact storage."""
-    if subject not in SUBJECTS:
-        raise ValueError("Unknown subject.")
+    if subject not in PUBLIC_SUBJECTS:
+        raise ValueError("No bundled dataset for this subject. Upload subject training records in the app.")
     data_path = Path(data_dir) / f"student-{subject}.csv"
     fingerprint = hashlib.sha256(data_path.read_bytes()).hexdigest()
     prefix = "" if subject == "mat" else "por_"

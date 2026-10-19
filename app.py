@@ -5,10 +5,11 @@ import logging
 import pandas as pd
 import streamlit as st
 
-from model import ROOT, FEATURES, FEATURE_LABELS, SUBJECTS, load_data, prediction_report
+from model import ROOT, FEATURES, FEATURE_LABELS, SUBJECTS, PUBLIC_SUBJECTS, load_data, prediction_report
 from model_service import bundle_signature, load_bundle
 from dashboard import render_dashboard
 from auth_ui import require_login
+from subject_training import render_subject_training
 
 st.set_page_config(page_title="StudentInsight | Staff analytics", page_icon="🎓", layout="wide")
 require_login()
@@ -24,21 +25,32 @@ def load_subject_model(subject, signature):
     return load_bundle(subject)
 
 
-try:
-    with st.spinner("Preparing the analytics workspace. The first visit may take a moment…"):
-        model, metrics, model_results = load_subject_model(subject, bundle_signature(subject))
-except Exception:
-    logging.getLogger(__name__).exception("Could not prepare the subject model")
-    st.error("The analytics workspace could not be prepared. Please retry or contact the app administrator.")
-    if st.button("Retry loading"):
-        load_subject_model.clear()
-        st.rerun()
-    st.stop()
+history = None
+if subject in PUBLIC_SUBJECTS:
+    try:
+        with st.spinner("Preparing the analytics workspace. The first visit may take a moment…"):
+            model, metrics, model_results = load_subject_model(subject, bundle_signature(subject))
+    except Exception:
+        logging.getLogger(__name__).exception("Could not prepare the subject model")
+        st.error("The analytics workspace could not be prepared. Please retry or contact the app administrator.")
+        if st.button("Retry loading"):
+            load_subject_model.clear()
+            st.rerun()
+        st.stop()
+else:
+    workspace = render_subject_training(subject)
+    if workspace is None:
+        st.stop()
+    model, metrics, model_results = workspace["bundle"]
+    history = workspace["history"]
 with st.sidebar:
     st.header("Model context")
     st.write(f"**Subject:** {SUBJECTS[subject]}\n\n**Target:** Final grade, G3 (0–20)\n\n**Prediction point:** After period two")
-    st.caption("An educational demonstration based on historical records from two Portuguese schools. Local validation is needed before using it with another school.")
-    st.link_button("View the UCI dataset", "https://archive.ics.uci.edu/dataset/320/student+performance")
+    if history is None:
+        st.caption("An educational demonstration based on historical records from two Portuguese schools. Local validation is needed before using it with another school.")
+        st.link_button("View the UCI dataset", "https://archive.ics.uci.edu/dataset/320/student+performance")
+    else:
+        st.caption("Trained only on your uploaded records for this subject. Random held-out evaluation does not establish performance on future classes or other institutions. This model is available for this session only.")
     st.divider()
     st.write(f"**Selected model:** {metrics['selected_model']}")
     st.caption("Selected by five-fold cross-validation on the training partition.")
@@ -47,7 +59,7 @@ with st.sidebar:
 dashboard_tab, predict_tab, evaluation_tab, data_tab = st.tabs(["Class dashboard", "Student analysis", "Model quality", "Data guide"])
 
 with dashboard_tab:
-    render_dashboard(model, metrics, subject)
+    render_dashboard(model, metrics, subject, history=history)
 
 with predict_tab:
     st.subheader("Student learning profile")
@@ -68,7 +80,7 @@ with predict_tab:
             activities = st.selectbox("Extracurricular activities", ["yes", "no"])
         with right:
             failures = st.selectbox("Previous class failures", [0, 1, 2, 3],
-                                    help="These are the values observed in the mathematics training dataset.")
+                                    help="The supported input range is 0–3 previous failures.")
             schoolsup = st.selectbox("Extra educational support at school", ["no", "yes"])
             famsup = st.selectbox("Family educational support", ["yes", "no"])
             internet = st.selectbox("Internet access at home", ["yes", "no"])
@@ -153,21 +165,29 @@ with evaluation_tab:
 with data_tab:
     st.subheader("The training dataset")
     try:
-        data = load_data(ROOT / "data" / f"student-{subject}.csv")
+        data = (load_data(ROOT / "data" / f"student-{subject}.csv") if history is None
+                else history[FEATURES].assign(G3=history.actual_grade.astype(int)))
     except FileNotFoundError:
         st.warning("The reference dataset is unavailable. Please contact the app administrator.")
     else:
         st.write(f"{len(data)} {SUBJECTS[subject].lower()} records · {len(FEATURES)} predictors · final grade G3 as the target")
-        st.caption("The project includes 395 mathematics and 649 Portuguese-language subject records. Some students occur in both files; 1,044 subject records does not mean 1,044 unique students. Models and evaluation splits stay separate by subject.")
+        if history is None:
+            st.caption("The project includes 395 mathematics and 649 Portuguese-language subject records. Some students occur in both files; 1,044 subject records does not mean 1,044 unique students. Models and evaluation splits stay separate by subject.")
+        else:
+            st.caption(f"Source: your uploaded {SUBJECTS[subject]} history. No records from another subject were added. Split by student record into fitting, calibration and test partitions; classes and time periods are not held out as groups.")
         quality = st.columns(3)
         quality[0].metric("Missing predictor/target values", int(data.isna().sum().sum()))
         quality[1].metric("Selected input fields", len(FEATURES))
-        quality[2].metric("Source schools", 2)
+        if history is None:
+            quality[2].metric("Source schools", 2)
+        else:
+            quality[2].metric("Source classes / groups", history.class_name.nunique())
         distribution = data["G3"].value_counts().reindex(range(21), fill_value=0).rename_axis("Final grade").to_frame("Students")
         st.bar_chart(distribution)
         st.dataframe(data, hide_index=True, width="stretch")
-    st.caption("Source: Cortez, P. (2008). Student Performance. UCI Machine Learning Repository. DOI: 10.24432/C5TG7T. CC BY 4.0.")
-    st.write("G1 and G2 are earlier grades and are strongly related to G3. This model therefore estimates performance after period two. It is not an early-enrollment prediction system. Support variables were collected in questionnaires; their exact measurement timing should be verified for prospective use.")
+    if history is None:
+        st.caption("Source: Cortez, P. (2008). Student Performance. UCI Machine Learning Repository. DOI: 10.24432/C5TG7T. CC BY 4.0.")
+    st.write("This model estimates final performance after period two using G1, G2 and learning context. It is not an early-enrollment prediction system. Verify that every input was recorded by the end of period two, before the final outcome was known.")
     st.subheader("What would make the dataset stronger?")
     st.write("Collect recent, consented records from your target schools across several cohorts, using consistent subject and grading definitions. Timestamp attendance, assignment scores, and engagement before the prediction date, then record the final result later. Evaluate on later cohorts and schools excluded from training.")
     st.caption("The bundled source has no reliable prediction-date snapshot for absences, so attendance is not added as an input. More columns or another subject do not by themselves demonstrate better generalisation.")

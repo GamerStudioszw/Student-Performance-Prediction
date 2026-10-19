@@ -17,7 +17,9 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 ROOT = Path(__file__).resolve().parent
 SCHEMA_VERSION = 2
-SUBJECTS = {"mat": "Mathematics", "por": "Portuguese language"}
+PUBLIC_SUBJECTS = {"mat": "Mathematics", "por": "Portuguese language"}
+SUBJECTS = {**PUBLIC_SUBJECTS, "eng": "English", "phy": "Physics", "chem": "Chemistry",
+            "bio": "Biology", "geo": "Geography", "hist": "History", "cs": "Computer Science"}
 NUMERIC = ["G1", "G2", "studytime", "failures", "traveltime"]
 CATEGORICAL = ["schoolsup", "famsup", "paid", "activities", "internet", "higher"]
 FEATURES = NUMERIC + CATEGORICAL

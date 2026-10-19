@@ -8,13 +8,13 @@ import joblib
 import sklearn
 
 from download_data import download
-from model import ROOT, SUBJECTS, load_data, train_and_evaluate
+from model import ROOT, PUBLIC_SUBJECTS, load_data, train_and_evaluate
 
 
 def main():
     output = ROOT / "artifacts"
     output.mkdir(exist_ok=True)
-    for subject, label in SUBJECTS.items():
+    for subject, label in PUBLIC_SUBJECTS.items():
         data_path = ROOT / "data" / f"student-{subject}.csv"
         if not data_path.exists():
             download(data_path, subject=subject)

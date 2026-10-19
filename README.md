@@ -2,6 +2,8 @@
 
 A staff analytics app for teachers, lecturers, principals, headmasters, and heads of department. It provides class dashboards, grade charts, student review tables, group comparisons, CSV imports, and downloadable reports. Its demonstration models estimate final mathematics or Portuguese-language grades (G3, 0–20) from earlier grades and learning context.
 
+The subject selector also includes **English, Physics, Chemistry, Biology, Geography, History, and Computer Science**. These seven subjects require your own completed subject records before predictions are available. They do not reuse or relabel a mathematics model.
+
 ## Open the login workspace
 
 The Streamlit app now includes a responsive StudentInsight sign-in screen, one-time owner account setup, and a protected prediction workspace. With the existing project environment installed, run:
@@ -31,13 +33,26 @@ The default **Historical example** uses only the selected model's held-out test 
 
 For your own cohort, choose **Upload class CSV** and download the template. Supply one row per student for the selected subject, using `student_id`, `class_name`, and all 11 input columns. Use anonymous student codes where possible. The import accepts UTF-8 comma- or semicolon-delimited CSV, up to 5,000 records and 2 MB. It validates numeric ranges, yes/no fields, duplicate student codes, and required columns. `G3` may optionally contain a known final grade or be blank; it is displayed but never passed to the model. Extra fields such as student names are ignored. Invalid files show an actionable error and do not leave a stale dashboard visible.
 
-Uploaded records are processed in the signed-in session and are not stored in the account database, shared in the global model cache, or used to retrain models. Signing out clears the session. Staff explicitly download any reports they want to retain. CSV exports neutralize spreadsheet formulas in supplied text labels.
+Uploaded class records are processed in the signed-in session and are not stored in the account database, shared in the global model cache, or used to retrain models. Separate training-history uploads for the seven additional subjects are described below. Signing out clears the session. Staff explicitly download any reports they want to retain. CSV exports neutralize spreadsheet formulas in supplied text labels.
 
 Review categories are **Outside grade scale** (estimate outside 0–20), **Below reference** (point estimate below the selected grade), **Near reference** (point estimate at/above the reference with a range crossing it), and **Above reference**. They are prompts for a staff conversation, not calibrated risk probabilities, official pass rules, or automatic student decisions. The public model uses secondary-school data; lecturer-facing use does not establish validity for university courses.
 
+## Additional subjects
+
+Select English (`eng`), Physics (`phy`), Chemistry (`chem`), Biology (`bio`), Geography (`geo`), History (`hist`), or Computer Science (`cs`) in the sidebar:
+
+1. Download the header-only **training CSV template**. Supply actual completed records for that subject, with `subject`, a unique `student_id`, `class_name`, the 11 predictors and final grade `G3`. Every `subject` value must match the selected code or full subject name. Mixed subjects, missing outcomes and duplicate student codes are rejected.
+2. Upload 50–5,000 distinct students (up to 2 MB), then choose **Train [subject] model**. Grades must be whole numbers from 0 to 20 and final grades must contain at least two distinct values. The interface explains all category codes. Fifty records is only a technical minimum; it does not establish that the model is reliable. Do not enter marks out of 100 directly or invent missing learning-context values.
+3. Review **Model quality**: training-only cross-validation selects the estimator, a separate calibration partition sets the prediction range, and a held-out partition reports error, coverage and the G2-only benchmark. Splits are by unique student record, not by class, school or time; a later-cohort evaluation is still necessary.
+4. The **Held-out history** dashboard shows only that subject's test records. It provides grade distributions, group comparisons, review filters, tables and CSV reports. Choose **Upload class CSV** to analyse a new class, or use **Student analysis** for one student. An overlap warning identifies student codes already present in the training history.
+
+Each subject's model, history and evaluation remain separate in the signed-in session. No uploaded history or trained private model enters the shared public-model cache, account database or Git repository. You can switch subjects without retraining during the session, or use **Clear this subject model** to remove one. Signing out, losing the session or restarting the server requires re-uploading and retraining. Keep the original CSV securely if you need it again. Changing the selected training file hides the previous model's dashboard until the new file is validated and trained.
+
+No reference training datasets are bundled for these seven subjects, and no accuracy claims are made for them. Their usefulness depends on the representativeness and measurement timing of the records supplied. The lightweight demo remains mathematics-only.
+
 ## Hosted startup
 
-Point the hosting service at `app.py` and install `requirements.txt`. Binary `.joblib` files remain excluded from Git. On first access to a subject, the app loads a compatible trusted artifact bundle if available; otherwise it trains and evaluates from the bundled public CSV and caches the entire bundle in process memory. Staff see a brief preparation message instead of a Python command. No writable artifact folder or external data download is required. Missing, incompatible, or outdated models trigger the same recovery, including after a library-version change. Uploaded classes never enter this training process.
+Point the hosting service at `app.py` and install `requirements.txt`. Binary `.joblib` files remain excluded from Git. On first access to mathematics or Portuguese, the app loads a compatible trusted artifact bundle if available; otherwise it trains and evaluates from the bundled public CSV and caches the entire bundle in process memory. Staff see a brief preparation message instead of a Python command. No writable artifact folder or external data download is required. Missing, incompatible, or outdated public models trigger the same recovery, including after a library-version change. Uploaded classes never enter this training process. The other seven subjects use the session-specific training workflow above.
 
 The cache is keyed by subject, schema and scikit-learn version, source data and model-code file timestamps, and artifact timestamps. It is shared only for the public model bundle. The signed-in account and uploaded student data are session-specific. `python train.py` remains available to administrators who want to prepare model artifacts in advance.
 
@@ -160,6 +175,7 @@ The two implementations use different random-number generators for their splits.
 | `app.py`, `model.py`, `train.py` | Optional Streamlit/scikit-learn implementation |
 | `auth.py`, `auth_ui.py` | Persistent local account storage, session checks, and login screen |
 | `model_service.py` | Compatible artifact loading and automatic in-memory model preparation |
+| `subject_training.py` | Validated per-subject history uploads, separate training and session-only storage |
 | `cohort.py`, `dashboard.py` | Cohort validation, staff summaries, charts, review tables, and exports |
 | `assets/app.css` | Responsive login design and matching workspace styling |
 | `tests/test_auth.py`, `tests/test_app.py` | Isolated authentication and Streamlit interaction tests |

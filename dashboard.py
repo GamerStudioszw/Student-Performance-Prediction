@@ -13,20 +13,22 @@ from model import FEATURE_LABELS, FEATURES
 COLORS = ["#913b79", "#b24431", "#a16b00", "#087f8c"]
 
 
-def render_dashboard(model, metrics, subject):
+def render_dashboard(model, metrics, subject, *, history=None):
     st.subheader("Class performance overview")
     st.caption("For teachers, lecturers, principals, and heads of department: review progress, compare groups, and identify students for a follow-up conversation.")
-    source = st.radio("Class data", ["Historical example", "Upload class CSV"], horizontal=True, key="cohort_source")
+    example_label = "Historical example" if history is None else "Held-out history"
+    source = st.radio("Class data", [example_label, "Upload class CSV"], horizontal=True,
+                      key="cohort_source" if history is None else f"cohort_source_{subject}")
     if source == "Upload class CSV":
         st.download_button("Download class CSV template", csv_template(), "class_template.csv", "text/csv")
         with st.expander("How to prepare your class file"):
-            st.write("Use one row per student for the selected subject, with a unique student code and class or group label. Grades use the 0–20 scale. Use the public model as an exploratory reference until it has been validated for your institution.")
+            st.write("Use one row per student for the selected subject, with a unique student code and class or group label. Grades use the 0–20 scale. Validate the model on later cohorts before relying on estimates for your institution.")
             st.dataframe(pd.DataFrame({"Column": ["student_id", "class_name", *FEATURES, "G3 (optional)"],
                 "Meaning": ["Unique student code", "Class, course, or group", *[FEATURE_LABELS[name] for name in FEATURES], "Known final grade, if already available"],
                 "Allowed values": ["Text, max 80 characters", "Text, max 80 characters", "Whole number 0–20", "Whole number 0–20",
                     "1: <2h; 2: 2–5h; 3: 5–10h; 4: >10h", "Whole number 0–3", "1: <15m; 2: 15–30m; 3: 30–60m; 4: >60m",
                     *["yes or no"] * 6, "Whole number 0–20, or blank"]}), hide_index=True, width="stretch")
-            st.caption("Files are processed in your session and are not used to retrain the public model. Limit: 5,000 rows / 2 MB. Only upload records you are authorised to use; student codes are enough.")
+            st.caption("Class files are processed in your session and are not used to retrain the model. Limit: 5,000 rows / 2 MB. Only upload records you are authorised to use; student codes are enough.")
         upload = st.file_uploader("Upload a class file for this subject", type="csv", key=f"cohort_file_{subject}")
         if upload is None:
             st.info("Upload a class CSV to see your class dashboard.")
@@ -37,9 +39,17 @@ def render_dashboard(model, metrics, subject):
             st.error(str(exc))
             return
         st.caption(f"UPLOADED CLASS DATA · {len(cohort):,} records · selected subject: {metrics['subject_label']}")
+        if history is not None:
+            overlap = cohort.student_id.isin(history.student_id).sum()
+            if overlap:
+                st.warning(f"{overlap} student codes also occur in the training history. These are not an independent evaluation cohort; use new students to assess generalisation.")
     else:
-        cohort = example_cohort(subject, metrics)
-        st.caption(f"HISTORICAL PUBLIC EXAMPLE · {len(cohort)} held-out subject records · groups are the source schools, not classes at your institution.")
+        if history is None:
+            cohort = example_cohort(subject, metrics)
+            st.caption(f"HISTORICAL PUBLIC EXAMPLE · {len(cohort)} held-out subject records · groups are the source schools, not classes at your institution.")
+        else:
+            cohort = history.loc[metrics["split_rows"]["test"]].copy().reset_index(drop=True)
+            st.caption(f"HELD-OUT UPLOADED HISTORY · {len(cohort)} {metrics['subject_label']} records · these students were excluded from fitting and calibration. Select Upload class CSV to analyse a new class.")
 
     controls = st.columns([2, 1])
     with controls[0]:
@@ -124,4 +134,4 @@ def render_dashboard(model, metrics, subject):
         export = summary.assign(subject=metrics["subject_label"], reference_grade=threshold,
                                 data_source=source, model_trained_at=metrics["trained_at"])
         st.download_button("Download class summary", export_csv(export), f"{subject}_class_summary.csv", "text/csv")
-    st.caption(f"Prediction ranges target 80% coverage on comparable records; measured public test coverage was {metrics['interval']['test_coverage']:.1%}. The model has not been validated on your institution's students.")
+    st.caption(f"Prediction ranges target 80% coverage on comparable records; measured held-out test coverage was {metrics['interval']['test_coverage']:.1%}. This does not establish coverage for future classes or other institutions.")
