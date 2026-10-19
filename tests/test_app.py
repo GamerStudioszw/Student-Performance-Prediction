@@ -6,12 +6,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import joblib
+from io import BytesIO
 import pandas as pd
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from model import ROOT, predict_grade
 from auth import AuthStore
+from cohort import csv_template
+from model_service import load_bundle
 
 PASSWORD = "a private learning workspace"
 
@@ -24,7 +27,10 @@ def click(app, label):
     next(button for button in app.button if button.label == label).click().run()
 
 
-@unittest.skipUnless((ROOT / "artifacts" / "model.joblib").exists(), "Run train.py first")
+def metric(app, label):
+    return next(item for item in app.metric if item.label == label)
+
+
 class AppTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -69,7 +75,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(app.tabs), 0)
         self.assertNotIn("Create account", [button.label for button in app.button])
         self.login(app)
-        self.assertEqual(len(app.tabs), 3)
+        self.assertEqual(len(app.tabs), 4)
 
     def test_render_and_predict(self):
         store = AuthStore()
@@ -86,32 +92,33 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(app.tabs), 0)
         self.assertIn("incorrect", app.error[0].value)
         self.login(app)
-        self.assertEqual(len(app.tabs), 3)
-        app.number_input[0].set_value(10)
-        app.number_input[1].set_value(11)
+        self.assertEqual(len(app.tabs), 4)
+        self.assertEqual(app.tabs[0].label, "Class dashboard")
+        self.assertEqual(metric(app, "Students in view").value, "79")
+        app.number_input(key="profile_G1").set_value(10)
+        app.number_input(key="profile_G2").set_value(11)
         click(app, "Predict final grade")
         self.assertEqual(len(app.exception), 0)
-        pipeline = joblib.load(ROOT / "artifacts" / "model.joblib")
+        pipeline = load_bundle("mat")[0]
         profile = pd.DataFrame([dict(G1=10, G2=11, studytime=2, failures=0, schoolsup="no", famsup="yes",
                                      traveltime=1, paid="no", activities="yes", internet="yes", higher="yes")])
         expected = float(predict_grade(pipeline, profile)[0])
-        self.assertEqual(app.metric[0].label, "Estimated final grade")
-        self.assertEqual(app.metric[0].value, f"{expected:.1f} / 20")
-        self.assertEqual(app.metric[1].label, "Percentage equivalent")
-        self.assertEqual(app.metric[1].value, f"{expected * 5:.1f}%")
+        self.assertEqual(metric(app, "Estimated final grade").value, f"{expected:.1f} / 20")
+        self.assertEqual(metric(app, "Percentage equivalent").value, f"{expected * 5:.1f}%")
         report = app.session_state["grade_report"]["report"]
         self.assertEqual(len(report), 1)
         self.assertEqual(report.iloc[0]["subject"], "Mathematics")
         app.run()
-        self.assertEqual(app.metric[0].label, "Estimated final grade")
+        self.assertIsNotNone(metric(app, "Estimated final grade"))
         app.selectbox(key="subject").set_value("por").run()
         self.assertEqual(len(app.exception), 0)
-        self.assertNotEqual(app.metric[0].label, "Estimated final grade")
+        self.assertNotIn("Estimated final grade", [item.label for item in app.metric])
+        self.assertEqual(metric(app, "Students in view").value, "130")
         click(app, "Predict final grade")
         self.assertEqual(len(app.exception), 0)
-        portuguese = joblib.load(ROOT / "artifacts" / "por_model.joblib")
+        portuguese = load_bundle("por")[0]
         expected_por = float(predict_grade(portuguese, profile)[0])
-        self.assertEqual(app.metric[0].value, f"{expected_por:.1f} / 20")
+        self.assertEqual(metric(app, "Estimated final grade").value, f"{expected_por:.1f} / 20")
         self.assertEqual(app.session_state["grade_report"]["report"].iloc[0]["subject"], "Portuguese language")
         token = app.session_state["auth_token"]
         click(app, "Sign out")
@@ -153,7 +160,55 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.title[0].value, "Welcome back.")
         self.assertNotIn("Your name", [field.label for field in app.text_input])
         self.login(app)
-        self.assertEqual(len(app.tabs), 3)
+        self.assertEqual(len(app.tabs), 4)
+
+    def test_dashboard_filters_and_upload_empty_state(self):
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        self.login(app)
+        groups = next(widget for widget in app.multiselect if widget.label == "Classes / groups")
+        groups.set_value([]).run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertNotIn("Students in view", [item.label for item in app.metric])
+        self.assertTrue(any("Select at least one" in item.value for item in app.info))
+        groups = next(widget for widget in app.multiselect if widget.label == "Classes / groups")
+        groups.set_value([groups.options[0]]).run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertGreater(int(metric(app, "Students in view").value), 0)
+        app.text_input(key="cohort_search").set_value("nonexistent-student-code").run()
+        self.assertTrue(any("No student records match" in item.value for item in app.info))
+        app.radio(key="cohort_source").set_value("Upload class CSV").run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertTrue(any("Upload a class CSV" in item.value for item in app.info))
+        self.assertNotIn("Students in view", [item.label for item in app.metric])
+
+    def test_class_upload_renders_and_bad_upload_clears_dashboard(self):
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        self.login(app)
+        with patch("dashboard.st.file_uploader", return_value=BytesIO(csv_template())):
+            app.radio(key="cohort_source").set_value("Upload class CSV").run()
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(metric(app, "Students in view").value, "1")
+        with patch("dashboard.st.file_uploader", return_value=BytesIO(b"bad,columns\n1,2\n")):
+            app.run()
+            self.assertEqual(len(app.exception), 0)
+            self.assertIn("Missing columns", app.error[0].value)
+            self.assertNotIn("Students in view", [item.label for item in app.metric])
+
+    def test_fresh_host_without_models_opens_dashboard(self):
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        st.cache_resource.clear()
+        self.addCleanup(st.cache_resource.clear)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("model_service.load_bundle", side_effect=lambda subject: load_bundle(subject, artifact_dir=Path(directory))):
+                app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+                self.login(app)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(app.tabs[0].label, "Class dashboard")
+            self.assertEqual(metric(app, "Students in view").value, "79")
+            self.assertEqual(len(app.code), 0)
+            self.assertEqual(list(Path(directory).iterdir()), [])
 
 
 if __name__ == "__main__":

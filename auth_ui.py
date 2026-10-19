@@ -13,7 +13,7 @@ BRAND = """
 <div class="brand-row">
   <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
   <span>Student<span class="brand-light">Insight</span></span></div>
-  <span class="brand-tag">A clearer picture of learning</span>
+  <span class="brand-tag">Insights for educators and school leaders</span>
 </div>
 """
 
@@ -55,10 +55,10 @@ def require_login():
 def _login_page(store, setup, expired, can_create_account):
     with st.container(key="auth_shell"):
         with st.container(key="auth_card", border=False):
-            st.html('<div class="form-eyebrow">YOUR LEARNING WORKSPACE</div>')
+            st.html('<div class="form-eyebrow">YOUR STAFF WORKSPACE</div>')
             st.title("Make it yours." if setup else "Welcome back.")
-            st.write("Create your account to start exploring student performance." if setup else
-                     "Sign in to turn learning data into useful insights.")
+            st.write("Create your account to review class and student performance." if setup else
+                     "Sign in to review classes, student progress, and reports.")
             if expired:
                 st.info("Your session has ended. Sign in again to continue.")
             if st.session_state.pop("account_created", False):

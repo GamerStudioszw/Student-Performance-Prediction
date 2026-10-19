@@ -1,44 +1,41 @@
 """Local Streamlit interface for the student performance ML project."""
 
-import json
+import logging
 
-import joblib
 import pandas as pd
 import streamlit as st
 
-from model import ROOT, FEATURES, FEATURE_LABELS, SCHEMA_VERSION, SUBJECTS, load_data, prediction_report
+from model import ROOT, FEATURES, FEATURE_LABELS, SUBJECTS, load_data, prediction_report
+from model_service import bundle_signature, load_bundle
+from dashboard import render_dashboard
 from auth_ui import require_login
 
-st.set_page_config(page_title="Student Performance | ML", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="StudentInsight | Staff analytics", page_icon="🎓", layout="wide")
 require_login()
-st.caption("EDUCATION ANALYTICS · MACHINE LEARNING PROJECT")
-st.title("Student Performance Prediction")
-st.write("Explore final-grade estimates, learning progress, and uncertainty using grades and learning context.")
-subject = st.selectbox("Subject", list(SUBJECTS), format_func=SUBJECTS.get, key="subject")
-
-artifact_dir = ROOT / "artifacts"
-prefix = "" if subject == "mat" else "por_"
-required = [artifact_dir / f"{prefix}{name}" for name in ("model.joblib", "metrics.json", "test_predictions.csv")]
-if not all(path.exists() for path in required):
-    st.info("Train the model first, then refresh this page.")
-    st.code("python train.py", language="bash")
-    st.stop()
+st.caption("STAFF WORKSPACE · STUDENT ANALYTICS")
+st.title("Student Performance Analytics")
+st.write("Review class progress, compare groups, and plan student support.")
+subject = st.sidebar.selectbox("Subject", list(SUBJECTS), format_func=SUBJECTS.get, key="subject")
 
 
-@st.cache_resource
-def load_model(path, modified_ns):
-    return joblib.load(path)
+@st.cache_resource(show_spinner=False)
+def load_subject_model(subject, signature):
+    # Only public reference models are shared across sessions; uploaded classes are not cached here.
+    return load_bundle(subject)
 
 
-metrics = json.loads(required[1].read_text(encoding="utf-8"))
-model = load_model(str(required[0]), required[0].stat().st_mtime_ns)
-if (metrics.get("schema_version") != SCHEMA_VERSION or metrics.get("features") != FEATURES
-        or list(model.feature_names_in_) != FEATURES):
-    st.info("Retrain the models to enable the expanded learning profile, then refresh.")
-    st.code("python train.py", language="bash")
+try:
+    with st.spinner("Preparing the analytics workspace. The first visit may take a moment…"):
+        model, metrics, model_results = load_subject_model(subject, bundle_signature(subject))
+except Exception:
+    logging.getLogger(__name__).exception("Could not prepare the subject model")
+    st.error("The analytics workspace could not be prepared. Please retry or contact the app administrator.")
+    if st.button("Retry loading"):
+        load_subject_model.clear()
+        st.rerun()
     st.stop()
 with st.sidebar:
-    st.header("About this project")
+    st.header("Model context")
     st.write(f"**Subject:** {SUBJECTS[subject]}\n\n**Target:** Final grade, G3 (0–20)\n\n**Prediction point:** After period two")
     st.caption("An educational demonstration based on historical records from two Portuguese schools. Local validation is needed before using it with another school.")
     st.link_button("View the UCI dataset", "https://archive.ics.uci.edu/dataset/320/student+performance")
@@ -47,7 +44,10 @@ with st.sidebar:
     st.caption("Selected by five-fold cross-validation on the training partition.")
     st.caption(f"{metrics['rows']} subject records · {len(FEATURES)} inputs")
 
-predict_tab, evaluation_tab, data_tab = st.tabs(["Predict a grade", "Model evaluation", "Explore the data"])
+dashboard_tab, predict_tab, evaluation_tab, data_tab = st.tabs(["Class dashboard", "Student analysis", "Model quality", "Data guide"])
+
+with dashboard_tab:
+    render_dashboard(model, metrics, subject)
 
 with predict_tab:
     st.subheader("Student learning profile")
@@ -55,8 +55,8 @@ with predict_tab:
     with st.form("prediction"):
         left, right = st.columns(2)
         with left:
-            g1 = st.number_input("First period grade (G1)", 0, 20, 12)
-            g2 = st.number_input("Second period grade (G2)", 0, 20, 12)
+            g1 = st.number_input("First period grade (G1)", 0, 20, 12, key="profile_G1")
+            g2 = st.number_input("Second period grade (G2)", 0, 20, 12, key="profile_G2")
             studytime = st.selectbox(
                 "Weekly study time", [1, 2, 3, 4], index=1,
                 format_func=lambda value: {1: "Under 2 hours", 2: "2–5 hours", 3: "5–10 hours", 4: "Over 10 hours"}[value],
@@ -139,7 +139,7 @@ with evaluation_tab:
     ridge_cv = next(row["cv_mae"] for row in metrics["comparison"] if row["model"] == "Ridge regression")
     st.write(f"**Do the additional inputs help?** On the same fitting records and folds, six-input ridge CV MAE was "
              f"{metrics['core_ridge_cv_mae']:.3f}; eleven-input ridge CV MAE was {ridge_cv:.3f}. Lower is better.")
-    results = pd.read_csv(required[2])
+    results = model_results.copy()
     st.subheader("Actual and predicted test grades")
     st.scatter_chart(results, x="actual_grade", y="predicted_grade", x_label="Actual final grade", y_label="Predicted final grade")
     st.download_button("Download held-out predictions", results.to_csv(index=False), "test_predictions.csv", "text/csv")
@@ -155,7 +155,7 @@ with data_tab:
     try:
         data = load_data(ROOT / "data" / f"student-{subject}.csv")
     except FileNotFoundError:
-        st.warning("Dataset not found. Run python download_data.py to restore it.")
+        st.warning("The reference dataset is unavailable. Please contact the app administrator.")
     else:
         st.write(f"{len(data)} {SUBJECTS[subject].lower()} records · {len(FEATURES)} predictors · final grade G3 as the target")
         st.caption("The project includes 395 mathematics and 649 Portuguese-language subject records. Some students occur in both files; 1,044 subject records does not mean 1,044 unique students. Models and evaluation splits stay separate by subject.")

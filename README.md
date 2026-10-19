@@ -1,6 +1,6 @@
 ﻿# Student Performance Prediction using Machine Learning
 
-A local web app that estimates final mathematics or Portuguese-language grades (G3, 0–20) from earlier grades and learning context. Includes real public data, reproducible training, model comparison, held-out evaluation, and downloadable prediction reports.
+A staff analytics app for teachers, lecturers, principals, headmasters, and heads of department. It provides class dashboards, grade charts, student review tables, group comparisons, CSV imports, and downloadable reports. Its demonstration models estimate final mathematics or Portuguese-language grades (G3, 0–20) from earlier grades and learning context.
 
 ## Open the login workspace
 
@@ -17,6 +17,29 @@ Accounts belong to the running installation's account database. A local account 
 The owner account persists in `.local/accounts.sqlite3`, which is excluded from Git. Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes with 600,000 iterations, following the [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session tokens are also hashed in the database and expire after eight hours. Five failed attempts pause sign-in for one minute across all sessions. A page refresh or a new browser tab may require signing in again because authentication is held in the Streamlit session. Tests use temporary databases via `STUDENT_AUTH_DB` and never create or change your real account.
 
 This is a local, single-owner workspace bound to `127.0.0.1`. First-run setup closes once the account exists. There is no email recovery or public registration. The login protects `app.py`; the separate lightweight demo below remains unauthenticated. The source CSV and model artifacts are local project files, not encrypted by the login feature.
+
+## Staff dashboard
+
+After signing in, staff land on **Class dashboard**. The four work areas are Class dashboard, Student analysis, Model quality, and Data guide. The subject selector is in the sidebar.
+
+- Overview cards show the number of students in selected groups, their second-period average, estimated final average, and count of estimates below a staff-selected reference grade.
+- Charts compare observed G2 and estimated final-grade distributions, review categories, and group averages. The group chart shows up to 20 groups; the table and exports include every selected group.
+- The review table includes student codes, class/group, G1, G2, estimated final grade, observed progress, prediction-range bounds, review status, and recorded final grade when available. Filter by group, status, or student code.
+- Download the filtered student report or a summary of all selected groups. Table filters do not change the overview charts; group filters do. Exported reports identify the subject, model timestamp, and whether they use example or uploaded data.
+
+The default **Historical example** uses only the selected model's held-out test records (79 mathematics or 130 Portuguese-language records). Its group labels are the two source schools, not invented classes. Training and calibration records are excluded from this example dashboard. These public records are clearly labelled and do not represent the staff member's institution.
+
+For your own cohort, choose **Upload class CSV** and download the template. Supply one row per student for the selected subject, using `student_id`, `class_name`, and all 11 input columns. Use anonymous student codes where possible. The import accepts UTF-8 comma- or semicolon-delimited CSV, up to 5,000 records and 2 MB. It validates numeric ranges, yes/no fields, duplicate student codes, and required columns. `G3` may optionally contain a known final grade or be blank; it is displayed but never passed to the model. Extra fields such as student names are ignored. Invalid files show an actionable error and do not leave a stale dashboard visible.
+
+Uploaded records are processed in the signed-in session and are not stored in the account database, shared in the global model cache, or used to retrain models. Signing out clears the session. Staff explicitly download any reports they want to retain. CSV exports neutralize spreadsheet formulas in supplied text labels.
+
+Review categories are **Outside grade scale** (estimate outside 0–20), **Below reference** (point estimate below the selected grade), **Near reference** (point estimate at/above the reference with a range crossing it), and **Above reference**. They are prompts for a staff conversation, not calibrated risk probabilities, official pass rules, or automatic student decisions. The public model uses secondary-school data; lecturer-facing use does not establish validity for university courses.
+
+## Hosted startup
+
+Point the hosting service at `app.py` and install `requirements.txt`. Binary `.joblib` files remain excluded from Git. On first access to a subject, the app loads a compatible trusted artifact bundle if available; otherwise it trains and evaluates from the bundled public CSV and caches the entire bundle in process memory. Staff see a brief preparation message instead of a Python command. No writable artifact folder or external data download is required. Missing, incompatible, or outdated models trigger the same recovery, including after a library-version change. Uploaded classes never enter this training process.
+
+The cache is keyed by subject, schema and scikit-learn version, source data and model-code file timestamps, and artifact timestamps. It is shared only for the public model bundle. The signed-in account and uploaded student data are session-specific. `python train.py` remains available to administrators who want to prepare model artifacts in advance.
 
 ## Expanded school-grade model
 
@@ -96,7 +119,7 @@ Six passing tests cover the linear solver, recovery of a known relationship, inv
 
 ## Optional scikit-learn and Streamlit version
 
-The expanded login workspace described above uses scikit-learn and Streamlit. Its interface provides prediction, model evaluation, and data exploration tabs, with a subject selector.
+The staff workspace described above uses scikit-learn, Streamlit, and Altair. Its four tabs provide cohort analytics, individual analysis, model quality, and a data guide.
 
 ```powershell
 python -m venv .venv
@@ -115,7 +138,7 @@ Once installed and trained, run its tests separately:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_auth.py -v
 ```
 
-Run the complete suite with `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`. Tests cover both prediction implementations, subject switching, report calculations, calibration quantiles, disjoint fitting/calibration/test partitions, both source files, first-time setup, failed login, restricted access, prediction after login, logout, session revocation and expiry, credential storage, and login throttling. Browser preview tools were unavailable during development; visual browser verification remains outstanding.
+Run the complete suite with `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`. Tests cover both prediction implementations, staff dashboard filters, class uploads, group summaries, export safety, subject switching, report calculations, calibration quantiles, disjoint fitting/calibration/test partitions, both source files, first-time setup, failed login, restricted access, prediction after login, logout, session revocation and expiry, credential storage, and login throttling. Deployment tests also open the staff dashboard with an empty artifact directory and rebuild models with incompatible metadata. Browser preview tools were unavailable during development; visual browser verification remains outstanding.
 
 The two implementations use different random-number generators for their splits. Their metrics and model files are separate and should not be treated as a direct algorithm comparison.
 
@@ -136,6 +159,8 @@ The two implementations use different random-number generators for their splits.
 | `run.ps1` | Launch helper; `-Full` selects the optional version |
 | `app.py`, `model.py`, `train.py` | Optional Streamlit/scikit-learn implementation |
 | `auth.py`, `auth_ui.py` | Persistent local account storage, session checks, and login screen |
+| `model_service.py` | Compatible artifact loading and automatic in-memory model preparation |
+| `cohort.py`, `dashboard.py` | Cohort validation, staff summaries, charts, review tables, and exports |
 | `assets/app.css` | Responsive login design and matching workspace styling |
 | `tests/test_auth.py`, `tests/test_app.py` | Isolated authentication and Streamlit interaction tests |
 

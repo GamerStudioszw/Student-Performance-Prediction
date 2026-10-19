@@ -1,0 +1,127 @@
+"""Educator dashboard: cohort charts, review tables and downloadable summaries."""
+
+import hashlib
+
+import altair as alt
+import pandas as pd
+import streamlit as st
+
+from cohort import (BANDS, STATUSES, analyse_cohort, class_summary, csv_template, example_cohort,
+                    export_csv, filter_cohort, grade_distribution, read_cohort_csv)
+from model import FEATURE_LABELS, FEATURES
+
+COLORS = ["#913b79", "#b24431", "#a16b00", "#087f8c"]
+
+
+def render_dashboard(model, metrics, subject):
+    st.subheader("Class performance overview")
+    st.caption("For teachers, lecturers, principals, and heads of department: review progress, compare groups, and identify students for a follow-up conversation.")
+    source = st.radio("Class data", ["Historical example", "Upload class CSV"], horizontal=True, key="cohort_source")
+    if source == "Upload class CSV":
+        st.download_button("Download class CSV template", csv_template(), "class_template.csv", "text/csv")
+        with st.expander("How to prepare your class file"):
+            st.write("Use one row per student for the selected subject, with a unique student code and class or group label. Grades use the 0–20 scale. Use the public model as an exploratory reference until it has been validated for your institution.")
+            st.dataframe(pd.DataFrame({"Column": ["student_id", "class_name", *FEATURES, "G3 (optional)"],
+                "Meaning": ["Unique student code", "Class, course, or group", *[FEATURE_LABELS[name] for name in FEATURES], "Known final grade, if already available"],
+                "Allowed values": ["Text, max 80 characters", "Text, max 80 characters", "Whole number 0–20", "Whole number 0–20",
+                    "1: <2h; 2: 2–5h; 3: 5–10h; 4: >10h", "Whole number 0–3", "1: <15m; 2: 15–30m; 3: 30–60m; 4: >60m",
+                    *["yes or no"] * 6, "Whole number 0–20, or blank"]}), hide_index=True, width="stretch")
+            st.caption("Files are processed in your session and are not used to retrain the public model. Limit: 5,000 rows / 2 MB. Only upload records you are authorised to use; student codes are enough.")
+        upload = st.file_uploader("Upload a class file for this subject", type="csv", key=f"cohort_file_{subject}")
+        if upload is None:
+            st.info("Upload a class CSV to see your class dashboard.")
+            return
+        try:
+            cohort = read_cohort_csv(upload.getvalue())
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+        st.caption(f"UPLOADED CLASS DATA · {len(cohort):,} records · selected subject: {metrics['subject_label']}")
+    else:
+        cohort = example_cohort(subject, metrics)
+        st.caption(f"HISTORICAL PUBLIC EXAMPLE · {len(cohort)} held-out subject records · groups are the source schools, not classes at your institution.")
+
+    controls = st.columns([2, 1])
+    with controls[0]:
+        options = sorted(cohort.class_name.unique().tolist())
+        group_signature = hashlib.sha256("\0".join(options).encode("utf-8")).hexdigest()[:12]
+        groups = st.multiselect("Classes / groups", options, default=options,
+                                key=f"cohort_groups_{subject}_{source}_{group_signature}")
+    with controls[1]:
+        threshold = st.number_input("Review reference grade", min_value=0, max_value=20, value=10, key="cohort_threshold",
+                                    help="A staff-selected threshold for review, not an official pass rule or a probability.")
+    report = analyse_cohort(model, cohort, metrics, threshold)
+    report["data_source"] = source
+    report = filter_cohort(report, groups, STATUSES)
+    if report.empty:
+        st.info("Select at least one class or group to view the dashboard.")
+        return
+    cards = st.columns(4)
+    cards[0].metric("Students in view", f"{len(report):,}")
+    cards[1].metric("Second-period average", f"{report.G2.mean():.1f} / 20")
+    cards[2].metric("Estimated final average", f"{report.predicted_grade.mean():.1f} / 20")
+    cards[3].metric("Estimates below reference", int((report.margin_to_threshold < 0).sum()))
+    st.caption(f"{int((report.observed_change_G1_to_G2 < 0).sum())} students' observed grades fell from period one to period two. Estimates and review flags support staff judgement; they are not decisions about students.")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Grade distribution")
+        chart = alt.Chart(grade_distribution(report)).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+            x=alt.X("Grade band:N", sort=BANDS, axis=alt.Axis(labelAngle=-20)),
+            y=alt.Y("Students:Q", axis=alt.Axis(tickMinStep=1)), xOffset="Series:N",
+            color=alt.Color("Series:N", scale=alt.Scale(range=["#183e50", "#38a4a6"]), legend=alt.Legend(orient="bottom")),
+            tooltip=["Grade band:N", "Series:N", "Students:Q"]).properties(height=270)
+        st.altair_chart(chart, width="stretch")
+    with right:
+        st.markdown("#### Review overview")
+        counts = report.review_status.value_counts().reindex(STATUSES, fill_value=0).rename_axis("Status").reset_index(name="Students")
+        chart = alt.Chart(counts).mark_bar(cornerRadiusEnd=4).encode(
+            y=alt.Y("Status:N", sort=STATUSES, title=None), x=alt.X("Students:Q", axis=alt.Axis(tickMinStep=1)),
+            color=alt.Color("Status:N", scale=alt.Scale(domain=STATUSES, range=COLORS), legend=None),
+            tooltip=["Status:N", "Students:Q"]).properties(height=270)
+        st.altair_chart(chart, width="stretch")
+        st.caption("Near reference: the point estimate is at/above the reference, but its prediction range crosses it. Outside grade scale: an estimate below 0 or above 20 needs review.")
+
+    summary = class_summary(report)
+    st.markdown("#### Class / group comparison")
+    chart_groups = summary.sort_values("students", ascending=False).head(20)
+    if len(summary) > 20:
+        st.caption("The chart shows the 20 largest groups. All selected groups are included in the table and export.")
+    averages = chart_groups.melt(id_vars="class_name", value_vars=["second_period_mean", "estimated_final_mean"], var_name="Series", value_name="Grade")
+    averages["Series"] = averages.Series.map({"second_period_mean": "Second period (observed)", "estimated_final_mean": "Final grade (estimated)"})
+    chart = alt.Chart(averages).mark_bar().encode(x=alt.X("class_name:N", title="Class / group", axis=alt.Axis(labelAngle=-20)),
+        y=alt.Y("Grade:Q", title="Mean grade / 20"), xOffset="Series:N",
+        color=alt.Color("Series:N", scale=alt.Scale(range=["#183e50", "#38a4a6"]), legend=alt.Legend(orient="bottom")),
+        tooltip=[alt.Tooltip("class_name:N", title="Group"), "Series:N", alt.Tooltip("Grade:Q", format=".2f")]).properties(height=260)
+    st.altair_chart(chart, width="stretch")
+    st.dataframe(summary.rename(columns={"class_name": "Class / group", "students": "Students", "first_period_mean": "G1 average",
+        "second_period_mean": "G2 average", "estimated_final_mean": "Estimated final average", "below_reference": "Below reference",
+        "observed_declines": "Observed grade declines"}).round(2), hide_index=True, width="stretch")
+
+    st.markdown("#### Student review table")
+    filters = st.columns(2)
+    with filters[0]:
+        statuses = st.multiselect("Review status", STATUSES, default=STATUSES, key="cohort_statuses")
+    with filters[1]:
+        query = st.text_input("Find student code", placeholder="e.g. S001", key="cohort_search")
+    visible = filter_cohort(report, groups, statuses, query).sort_values(["predicted_grade", "student_id"])
+    if visible.empty:
+        st.info("No student records match these table filters. The charts above still describe the selected groups.")
+    else:
+        columns = ["student_id", "class_name", "G1", "G2", "predicted_grade", "observed_change_G1_to_G2",
+                   "interval_lower", "interval_upper", "review_status"]
+        if "actual_grade" in visible:
+            columns.append("actual_grade")
+        st.dataframe(visible[columns].rename(columns={"student_id": "Student code", "class_name": "Class / group",
+            "predicted_grade": "Estimated final grade", "observed_change_G1_to_G2": "Observed change",
+            "interval_lower": "Range lower", "interval_upper": "Range upper", "review_status": "Review status",
+            "actual_grade": "Recorded final grade"}).round(2), hide_index=True, width="stretch", height=350)
+        st.caption(f"Showing {len(visible):,} of {len(report):,} records in selected groups, ordered by estimated grade. Recorded final grades, where supplied, are never prediction inputs.")
+    downloads = st.columns(2)
+    with downloads[0]:
+        st.download_button("Download filtered student report", export_csv(visible), f"{subject}_student_review.csv", "text/csv", disabled=visible.empty)
+    with downloads[1]:
+        export = summary.assign(subject=metrics["subject_label"], reference_grade=threshold,
+                                data_source=source, model_trained_at=metrics["trained_at"])
+        st.download_button("Download class summary", export_csv(export), f"{subject}_class_summary.csv", "text/csv")
+    st.caption(f"Prediction ranges target 80% coverage on comparable records; measured public test coverage was {metrics['interval']['test_coverage']:.1%}. The model has not been validated on your institution's students.")
