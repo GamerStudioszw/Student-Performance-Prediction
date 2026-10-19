@@ -1,0 +1,13 @@
+.venv/
+.wheelhouse/
+__pycache__/
+*.pyc
+artifacts/*.joblib
+artifacts/*.log
+.streamlit/secrets.toml
+.local/
+.env
+.env.*
+!.env.example
+Thumbs.db
+.DS_Store

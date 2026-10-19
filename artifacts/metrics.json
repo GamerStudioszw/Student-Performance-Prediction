@@ -1,0 +1,40 @@
+{
+  "selected_model": "Ridge regression",
+  "rows": 395,
+  "train_rows": 316,
+  "test_rows": 79,
+  "random_seed": 42,
+  "cv_folds": 5,
+  "mae": 1.3630657908034103,
+  "rmse": 2.1491652236807557,
+  "r2": 0.7747427207411457,
+  "baseline_mae": 3.64585002403461,
+  "comparison": [
+    {
+      "model": "Ridge regression",
+      "cv_mae": 1.1608886457196352,
+      "cv_std": 0.24815073153712483
+    },
+    {
+      "model": "Random forest",
+      "cv_mae": 1.1901863542629436,
+      "cv_std": 0.23045622334618884
+    },
+    {
+      "model": "Mean baseline",
+      "cv_mae": 3.4028651224982744,
+      "cv_std": 0.6293192137033018
+    }
+  ],
+  "features": [
+    "G1",
+    "G2",
+    "studytime",
+    "failures",
+    "schoolsup",
+    "famsup"
+  ],
+  "target": "G3",
+  "trained_at": "2026-10-19T06:47:41.516436+00:00",
+  "sklearn_version": "1.9.1"
+}

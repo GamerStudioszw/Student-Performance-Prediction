@@ -1,0 +1,76 @@
+{
+  "implementation": "Python standard-library ridge regression",
+  "selected_model": "Ridge (alpha=1)",
+  "features": [
+    "G1",
+    "G2",
+    "studytime",
+    "failures",
+    "schoolsup",
+    "famsup"
+  ],
+  "rows": 395,
+  "train_rows": 316,
+  "test_rows": 79,
+  "seed": 42,
+  "cv_folds": 5,
+  "mae": 1.3458471058034982,
+  "rmse": 2.0816055837054823,
+  "r2": 0.7377900250939895,
+  "baseline_mae": 2.999479250120173,
+  "comparison": [
+    {
+      "model": "Ridge (alpha=1)",
+      "alpha": 1.0,
+      "cv_mae": 1.15889171749822,
+      "cv_std": 0.22078593612835481
+    },
+    {
+      "model": "Ridge (alpha=0.1)",
+      "alpha": 0.1,
+      "cv_mae": 1.1593817578533414,
+      "cv_std": 0.22181997042654628
+    },
+    {
+      "model": "Ridge (alpha=10)",
+      "alpha": 10.0,
+      "cv_mae": 1.168531243244231,
+      "cv_std": 0.21600105508713052
+    },
+    {
+      "model": "Ridge (alpha=100)",
+      "alpha": 100.0,
+      "cv_mae": 1.3621661952848454,
+      "cv_std": 0.2336374725988556
+    },
+    {
+      "model": "Mean baseline",
+      "alpha": null,
+      "cv_mae": 3.556771127423301,
+      "cv_std": 0.3654584129933446
+    }
+  ],
+  "grade_distribution": [
+    38,
+    0,
+    0,
+    0,
+    1,
+    7,
+    15,
+    9,
+    32,
+    28,
+    56,
+    47,
+    31,
+    31,
+    27,
+    33,
+    16,
+    6,
+    12,
+    5,
+    1
+  ]
+}
