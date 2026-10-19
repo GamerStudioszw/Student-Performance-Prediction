@@ -10,7 +10,9 @@ The Streamlit app now includes a responsive StudentInsight sign-in screen, one-t
 .\.venv\Scripts\python.exe -m streamlit run app.py --server.port 8502
 ```
 
-Open **http://127.0.0.1:8502**. On your first visit, create your account using your name, a username, and a passphrase of at least 15 characters. Then sign in. There are no default credentials. Later visits show the login form; use **Sign out** in the sidebar to end your session.
+Open **http://127.0.0.1:8502**. The app always starts with **Sign in**. Existing users enter their username and password. If this installation has no account yet, choose **Create account**, enter your name, a username, and a passphrase of at least 15 characters, then sign in. The creation screen includes an **Already have an account? Sign in** route. There are no default credentials. Use **Sign out** in the sidebar to end your session.
+
+Accounts belong to the running installation's account database. A local account is not automatically available on a separately hosted copy, because account databases are excluded from Git. If that copy has no saved account, an attempted sign-in explains this and offers initial account setup. The app still supports one owner account per installation; this navigation change does not add public multi-user registration.
 
 The owner account persists in `.local/accounts.sqlite3`, which is excluded from Git. Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes with 600,000 iterations, following the [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session tokens are also hashed in the database and expire after eight hours. Five failed attempts pause sign-in for one minute across all sessions. A page refresh or a new browser tab may require signing in again because authentication is held in the Streamlit session. Tests use temporary databases via `STUDENT_AUTH_DB` and never create or change your real account.
 

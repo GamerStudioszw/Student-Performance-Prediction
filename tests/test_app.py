@@ -44,7 +44,13 @@ class AppTests(unittest.TestCase):
         app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
         self.assertEqual(len(app.exception), 0)
         self.assertEqual(len(app.tabs), 0)
+        self.assertEqual(app.title[0].value, "Welcome back.")
+        self.assertEqual([field.label for field in app.text_input], ["Username", "Password"])
+        click(app, "Create account")
         self.assertEqual(app.title[0].value, "Make it yours.")
+        click(app, "Sign in")
+        self.assertEqual(app.title[0].value, "Welcome back.")
+        click(app, "Create account")
         fill(app, "Your name", "Alex Morgan")
         fill(app, "Username", "alex")
         fill(app, "Password", PASSWORD)
@@ -61,6 +67,7 @@ class AppTests(unittest.TestCase):
         self.assertFalse(AuthStore().needs_setup())
         self.assertEqual(app.title[0].value, "Welcome back.")
         self.assertEqual(len(app.tabs), 0)
+        self.assertNotIn("Create account", [button.label for button in app.button])
         self.login(app)
         self.assertEqual(len(app.tabs), 3)
 
@@ -69,6 +76,7 @@ class AppTests(unittest.TestCase):
         store.create_owner("Alex Morgan", "alex", PASSWORD)
         app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
         self.assertEqual(len(app.exception), 0)
+        self.assertEqual(app.title[0].value, "Welcome back.")
         self.assertEqual(len(app.tabs), 0)
         self.assertEqual(len(app.dataframe), 0)
         self.assertEqual(len(app.number_input), 0)
@@ -125,6 +133,27 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(app.exception), 0)
         self.assertEqual(len(app.tabs), 0)
         self.assertIn("session has ended", app.info[0].value)
+
+    def test_empty_workspace_sign_in_explains_missing_account(self):
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        fill(app, "Username", "existing_elsewhere")
+        fill(app, "Password", PASSWORD)
+        click(app, "Sign in →")
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(len(app.tabs), 0)
+        self.assertIn("No account is registered on this app yet", app.error[0].value)
+        self.assertTrue(AuthStore().needs_setup())
+
+    def test_stale_setup_view_cannot_reopen_registration(self):
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        click(app, "Create account")
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        app.run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(app.title[0].value, "Welcome back.")
+        self.assertNotIn("Your name", [field.label for field in app.text_input])
+        self.login(app)
+        self.assertEqual(len(app.tabs), 3)
 
 
 if __name__ == "__main__":

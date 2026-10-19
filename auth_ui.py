@@ -44,14 +44,15 @@ def require_login():
         expired = bool(token)
         if expired:
             _clear_session()
-        setup = store.needs_setup()
-        _login_page(store, setup, expired)
+        can_create_account = store.needs_setup()
+        setup = can_create_account and st.session_state.get("auth_view") == "create_account"
+        _login_page(store, setup, expired, can_create_account)
     except (sqlite3.Error, OSError):
         st.error("The account store is unavailable. Check that the app can write to its .local folder, then refresh.")
     st.stop()
 
 
-def _login_page(store, setup, expired):
+def _login_page(store, setup, expired, can_create_account):
     with st.container(key="auth_shell"):
         with st.container(key="auth_card", border=False):
             st.html('<div class="form-eyebrow">YOUR LEARNING WORKSPACE</div>')
@@ -82,13 +83,25 @@ def _login_page(store, setup, expired):
                             raise AuthError("The passwords do not match. Please enter them again.")
                         store.create_owner(name, username, password)
                         st.session_state["account_created"] = True
+                        st.session_state["auth_view"] = "sign_in"
                     else:
+                        if store.needs_setup():
+                            raise AuthError("No account is registered on this app yet. Create an account below. If you registered on another app address, sign in there.")
                         st.session_state["auth_token"] = store.login(username, password)
                     st.rerun()
                 except AuthError as exc:
                     st.error(str(exc))
             st.html('<div class="form-divider"></div>')
-            st.caption("FIRST TIME HERE?" if setup else "YOUR ACCOUNT, YOUR WORKSPACE")
-            st.write("This one-time setup creates the owner account for this workspace." if setup else
-                     "Use the account you created when you first opened this workspace.")
+            if setup:
+                st.write("Already have an account?")
+                if st.button("Sign in", key="show_sign_in", width="stretch"):
+                    st.session_state["auth_view"] = "sign_in"
+                    st.rerun()
+            else:
+                st.caption("Use the username and password registered with this app.")
+                if can_create_account:
+                    st.write("New here?")
+                    if st.button("Create account", key="show_create_account", width="stretch"):
+                        st.session_state["auth_view"] = "create_account"
+                        st.rerun()
     st.html('<footer class="login-footer"><span>STUDENT PERFORMANCE PREDICTION</span><span>Machine learning to support learning.</span></footer>')

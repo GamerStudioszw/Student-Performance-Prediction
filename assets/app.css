@@ -26,6 +26,7 @@
 .st-key-auth_card input::placeholder { color: #6f818c; }
 .st-key-auth_card button[kind="primaryFormSubmit"] { min-height: 48px; border-radius: 9px; margin-top: 0.5rem; background: var(--teal); border-color: var(--teal); }
 .st-key-auth_card button[kind="primaryFormSubmit"]:hover { background: #066d78; border-color: #066d78; }
+.st-key-auth_card button[kind="primaryFormSubmit"] [data-testid="stMarkdownContainer"] p { color: #fff; }
 .st-key-auth_card button:focus-visible { outline: 3px solid #087f8c; outline-offset: 3px; }
 .st-key-auth_card [data-testid="stCaptionContainer"] p { font-size: 0.71rem; color: var(--muted); }
 .form-divider { border-top: 1px solid #dbe3e4; margin: 1rem 0 0.25rem; }
