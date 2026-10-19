@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 artifacts/*.joblib
+artifacts/*.tmp
 artifacts/*.log
 .streamlit/secrets.toml
 .local/
