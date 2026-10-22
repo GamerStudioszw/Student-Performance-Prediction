@@ -9,6 +9,7 @@ import streamlit as st
 from cohort import (BANDS, STATUSES, analyse_cohort, class_summary, csv_template, example_cohort,
                     export_csv, filter_cohort, grade_distribution, read_cohort_csv)
 from model import FEATURE_LABELS, FEATURES
+from evaluation_ui import render_alert_evaluation
 
 COLORS = ["#913b79", "#b24431", "#a16b00", "#087f8c"]
 
@@ -16,25 +17,28 @@ COLORS = ["#913b79", "#b24431", "#a16b00", "#087f8c"]
 def render_dashboard(model, metrics, subject, *, history=None):
     st.subheader("Class performance overview")
     st.caption("For teachers, lecturers, principals, and heads of department: review progress, compare groups, and identify students for a follow-up conversation.")
+    features = metrics["features"]
     example_label = "Historical example" if history is None else "Held-out history"
     source = st.radio("Class data", [example_label, "Upload class CSV"], horizontal=True,
                       key="cohort_source" if history is None else f"cohort_source_{subject}")
     if source == "Upload class CSV":
-        st.download_button("Download class CSV template", csv_template(), "class_template.csv", "text/csv")
+        st.download_button("Download class CSV template", csv_template(features), "class_template.csv", "text/csv")
         with st.expander("How to prepare your class file"):
             st.write("Use one row per student for the selected subject, with a unique student code and class or group label. Grades use the 0–20 scale. Validate the model on later cohorts before relying on estimates for your institution.")
-            st.dataframe(pd.DataFrame({"Column": ["student_id", "class_name", *FEATURES, "G3 (optional)"],
-                "Meaning": ["Unique student code", "Class, course, or group", *[FEATURE_LABELS[name] for name in FEATURES], "Known final grade, if already available"],
-                "Allowed values": ["Text, max 80 characters", "Text, max 80 characters", "Whole number 0–20", "Whole number 0–20",
-                    "1: <2h; 2: 2–5h; 3: 5–10h; 4: >10h", "Whole number 0–3", "1: <15m; 2: 15–30m; 3: 30–60m; 4: >60m",
-                    *["yes or no"] * 6, "Whole number 0–20, or blank"]}), hide_index=True, width="stretch")
+            st.write(f"Required prediction columns for {metrics['feature_set']}: " + ", ".join(features))
+            st.dataframe(pd.DataFrame({"Column": features, "Meaning": [FEATURE_LABELS[name] for name in features]}),
+                         hide_index=True, width="stretch")
+            st.caption("Include student_id and class_name as metadata. G1 is optional when not required by the predictor; "
+                       "a missing G1 leaves progress unavailable. Optional G3 is a recorded outcome, never an input. "
+                       "G1/G2/G3: whole numbers 0–20; studytime/traveltime: codes 1–4; failures: 0–3; support fields: yes/no. "
+                       "The template row is illustrative; replace it with actual records. No required field is filled automatically.")
             st.caption("Class files are processed in your session and are not used to retrain the model. Limit: 5,000 rows / 2 MB. Only upload records you are authorised to use; student codes are enough.")
         upload = st.file_uploader("Upload a class file for this subject", type="csv", key=f"cohort_file_{subject}")
         if upload is None:
             st.info("Upload a class CSV to see your class dashboard.")
             return
         try:
-            cohort = read_cohort_csv(upload.getvalue())
+            cohort = read_cohort_csv(upload.getvalue(), features)
         except ValueError as exc:
             st.error(str(exc))
             return
@@ -71,7 +75,10 @@ def render_dashboard(model, metrics, subject, *, history=None):
     cards[1].metric("Second-period average", f"{report.G2.mean():.1f} / 20")
     cards[2].metric("Estimated final average", f"{report.predicted_grade.mean():.1f} / 20")
     cards[3].metric("Estimates below reference", int((report.margin_to_threshold < 0).sum()))
-    st.caption(f"{int((report.observed_change_G1_to_G2 < 0).sum())} students' observed grades fell from period one to period two. Estimates and review flags support staff judgement; they are not decisions about students.")
+    st.caption(f"{int((report.observed_change_G1_to_G2 < 0).sum())} observed grade declines among "
+               f"{int(report.observed_change_G1_to_G2.notna().sum())} students with both G1 and G2. "
+               "G2 − G1 describes recorded progress, not an additional independent predictor. Missing progress is not zero. "
+               "Review categories are rule-based prompts for staff judgement.")
 
     left, right = st.columns(2)
     with left:
@@ -106,7 +113,7 @@ def render_dashboard(model, metrics, subject, *, history=None):
     st.altair_chart(chart, width="stretch")
     st.dataframe(summary.rename(columns={"class_name": "Class / group", "students": "Students", "first_period_mean": "G1 average",
         "second_period_mean": "G2 average", "estimated_final_mean": "Estimated final average", "below_reference": "Below reference",
-        "observed_declines": "Observed grade declines"}).round(2), hide_index=True, width="stretch")
+        "observed_declines": "Observed grade declines", "progress_available": "Records with G1 and G2"}).round(2), hide_index=True, width="stretch")
 
     st.markdown("#### Student review table")
     filters = st.columns(2)
@@ -132,6 +139,14 @@ def render_dashboard(model, metrics, subject, *, history=None):
         st.download_button("Download filtered student report", export_csv(visible), f"{subject}_student_review.csv", "text/csv", disabled=visible.empty)
     with downloads[1]:
         export = summary.assign(subject=metrics["subject_label"], reference_grade=threshold,
-                                data_source=source, model_trained_at=metrics["trained_at"])
+                                data_source=source, model_trained_at=metrics["trained_at"], bundle_id=metrics["bundle_id"],
+                                feature_set=metrics["feature_set"], grade_scale="0-20", prediction_timing=metrics["prediction_timing"])
         st.download_button("Download class summary", export_csv(export), f"{subject}_class_summary.csv", "text/csv")
     st.caption(f"Prediction ranges target 80% coverage on comparable records; measured held-out test coverage was {metrics['interval']['test_coverage']:.1%}. This does not establish coverage for future classes or other institutions.")
+    st.caption(f"Fixed interval width: {metrics['interval']['average_width']:.2f} points for every student using this predictor. "
+               "This is not personalised uncertainty or a pass probability.")
+    if "actual_grade" in report:
+        population = ("Uploaded class outcomes in selected groups; descriptive class evaluation, separate from reserved model-test metrics."
+                      if source == "Upload class CSV" else "Historical held-out outcomes in selected groups; not live class records.")
+        render_alert_evaluation(report.actual_grade, report.predicted_grade, threshold, source=population,
+                                key=f"cohort_alerts_{subject}", bundle_id=metrics["bundle_id"])

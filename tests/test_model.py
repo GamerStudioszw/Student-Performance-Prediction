@@ -1,11 +1,13 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyRegressor
 
-from model import (FEATURES, ROOT, conformal_radius, load_data, make_pipeline, predict_grade,
-                   prediction_report, split_data, train_and_evaluate, validate_frame)
+from model import (FEATURES, ROOT, FEATURE_SETS, PersistenceRegressor, conformal_radius, load_data, make_pipeline, predict_grade,
+                   prediction_report, split_data, train_and_evaluate, validate_frame, select_candidate, alert_evaluation)
+from sklearn.model_selection import cross_val_score
 
 
 class ModelTests(unittest.TestCase):
@@ -65,13 +67,95 @@ class ModelTests(unittest.TestCase):
         self.assertEqual([len(part) for part in sets], [60, 20, 20])
         self.assertFalse(sets[0] & sets[1] or sets[0] & sets[2] or sets[1] & sets[2])
         fitted, metrics, results = train_and_evaluate(data)
-        scaler = fitted.named_steps["preprocessing"].named_transformers_["numeric"]
-        self.assertEqual(scaler.n_samples_seen_, len(train))
+        if "numeric" in fitted.named_steps["preprocessing"].named_transformers_:
+            scaler = fitted.named_steps["preprocessing"].named_transformers_["numeric"]
+            self.assertEqual(scaler.n_samples_seen_, len(train))
         residuals = np.abs(calibration.G3.to_numpy() - predict_grade(fitted, calibration))
         self.assertAlmostEqual(metrics["interval"]["radius"], conformal_radius(residuals))
         self.assertEqual(set(results.source_row), sets[2])
         self.assertEqual(metrics["split_rows"]["train"], train.index.tolist())
-        self.assertEqual(len(metrics["feature_importance"]), len(FEATURES))
+        self.assertEqual(len(metrics["feature_importance"]), len(metrics["features"]))
+        self.assertEqual(metrics["interval"]["average_width"], 2 * metrics["interval"]["radius"])
+        for fold in metrics["cv_rows"]:
+            self.assertTrue(set(fold["fit"]) <= sets[0])
+            self.assertTrue(set(fold["validation"]) <= sets[0])
+            self.assertFalse(set(fold["fit"]) & set(fold["validation"]))
+
+    def test_g2_forecast_uses_only_g2_and_missing_progress_stays_missing(self):
+        fitted = make_pipeline(PersistenceRegressor(), ["G2"]).fit(pd.DataFrame({"G2": [0, 12, 20]}), [20, 0, 1])
+        profile = pd.DataFrame({"G2": [0, 7, 20], "G3": [20, 20, 0], "student_id": ["a", "b", "c"]})
+        np.testing.assert_array_equal(predict_grade(fitted, profile), [0, 7, 20])
+        report = prediction_report(fitted, profile, {"interval": {"radius": 1}})
+        self.assertTrue(report.G1.isna().all())
+        self.assertTrue(report.observed_change_G1_to_G2.isna().all())
+        self.assertNotIn("student_id", report)
+        self.assertNotIn("G3", report)
+        with self.assertRaises(ValueError):
+            predict_grade(fitted, profile.drop(columns="G2"))
+        with self.assertRaises(ValueError):
+            predict_grade(fitted, profile.assign(G2=np.nan))
+        with self.assertRaises(ValueError):
+            validate_frame(profile, features=["G3"])
+
+    def test_identical_training_only_folds_and_baseline_participation(self):
+        data = load_data().iloc[:80].assign(student_id="excluded", class_name="excluded")
+        calls = []
+        def score(estimator, x, y, **kwargs):
+            calls.append((estimator, x.copy(), y.copy(), kwargs["cv"]))
+            self.assertIsInstance(estimator.named_steps["preprocessing"], __import__("sklearn.compose", fromlist=["ColumnTransformer"]).ColumnTransformer)
+            return cross_val_score(estimator, x, y, **kwargs)
+        with patch("model.cross_val_score", side_effect=score):
+            _, metrics, _ = train_and_evaluate(data)
+        self.assertEqual(len(calls), 6)
+        self.assertEqual({row["candidate"] for row in metrics["comparison"]},
+                         {"g2", "mean", "ridge_grades", "ridge_expanded", "forest_grades", "forest_expanded"})
+        train = split_data(data)[0]
+        for _, x, y, folds in calls:
+            self.assertEqual(x.index.tolist(), train.index.tolist())
+            self.assertEqual(y.index.tolist(), train.index.tolist())
+            self.assertTrue(set(x.columns).issubset(FEATURES))
+            self.assertIs(folds, calls[0][3])
+        expected = [float(np.abs(train.iloc[b].G3 - train.iloc[b].G2).mean()) for _, b in calls[0][3]]
+        np.testing.assert_allclose(metrics["comparison"][0]["fold_mae"], expected)
+        # Fit one actual ridge fold, then verify scaler sees only that fold's fitting records.
+        ridge, x, y, folds = calls[2]
+        a, b = folds[0]
+        ridge.fit(x.iloc[a], y.iloc[a])
+        scaler = ridge.named_steps["preprocessing"].named_transformers_["numeric"]
+        self.assertEqual(scaler.n_samples_seen_, len(a))
+        np.testing.assert_allclose(scaler.mean_, x.iloc[a].mean())
+
+    def test_simple_candidate_tie_rule_and_finite_quantile_boundary(self):
+        rows = [{"candidate": "g2", "cv_mae": 1.019, "simplicity_rank": 0},
+                {"candidate": "forest", "cv_mae": 1., "simplicity_rank": 5}]
+        self.assertEqual(select_candidate(rows)["candidate"], "g2")
+        rows[0]["cv_mae"] = 1.021
+        self.assertEqual(select_candidate(rows)["candidate"], "forest")
+        self.assertEqual(conformal_radius([0, 1, 2, 3], .8), 3)
+        for coverage in (.8, .99):
+            with self.assertRaisesRegex(ValueError, "finite"):
+                conformal_radius([0, 1, 2], coverage)
+        with self.assertRaises(ValueError):
+            conformal_radius([0, 1, 2, 3], float("nan"))
+
+    def test_alert_boundaries_missing_outcomes_and_undefined_denominators(self):
+        result = alert_evaluation([9, 10, 9, 10, np.nan], [9, 9, 10, 10, 0], 10)
+        self.assertEqual([result[k] for k in ["tp", "fp", "fn", "tn"]], [1, 1, 1, 1])
+        self.assertEqual(result["precision"], .5)
+        self.assertEqual(result["recall"], .5)
+        self.assertEqual(result["f1"], .5)
+        self.assertEqual(result["excluded_missing"], 1)
+        no_positive = alert_evaluation([10, 20], [10, 20], 10)
+        self.assertIsNone(no_positive["precision"])
+        self.assertIsNone(no_positive["recall"])
+        self.assertIsNone(no_positive["f1"])
+        missed = alert_evaluation([9], [10], 10)
+        self.assertIsNone(missed["precision"])
+        self.assertEqual(missed["recall"], 0)
+        self.assertEqual(missed["f1"], 0)
+        self.assertEqual(alert_evaluation([], [], 0)["evaluated"], 0)
+        with self.assertRaises(ValueError):
+            alert_evaluation([9], [9, 9], 10)
 
     def test_both_subject_files_pass_validation(self):
         for subject, count in (("mat", 395), ("por", 649)):

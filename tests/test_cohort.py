@@ -83,6 +83,18 @@ class CohortTests(unittest.TestCase):
         self.assertFalse(row_numbers & set(metrics["split_rows"]["train"]))
         self.assertFalse(row_numbers & set(metrics["split_rows"]["calibration"]))
 
+    def test_schema_specific_import_and_template_keep_unknown_g1_missing(self):
+        cohort = read_cohort_csv(csv_template(["G2"]), ["G2"])
+        self.assertTrue(cohort.G1.isna().all())
+        self.assertNotIn("studytime", cohort)
+        optional = pd.DataFrame({"student_id": ["a", "b"], "class_name": ["A", "A"],
+                                 "G2": [12, 8], "G1": [None, 10], "G3": [13, None]})
+        cohort = read_cohort_csv(optional.to_csv(index=False).encode(), ["G2"])
+        self.assertTrue(pd.isna(cohort.G1.iloc[0]))
+        self.assertEqual(cohort.G1.iloc[1], 10)
+        with self.assertRaises(ValueError):
+            read_cohort_csv(csv_template(["G2"]), ["G1", "G2"])
+
 
 if __name__ == "__main__":
     unittest.main()

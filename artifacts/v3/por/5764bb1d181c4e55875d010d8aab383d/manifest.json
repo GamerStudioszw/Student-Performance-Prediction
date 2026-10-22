@@ -1,0 +1,9 @@
+{
+  "schema_version": 3,
+  "bundle_id": "5764bb1d181c4e55875d010d8aab383d",
+  "files": {
+    "model.joblib": "178a5304c5213c629c0996d85c401989d1881026264b5ef81a091815bf62191a",
+    "metrics.json": "cc7b1086d3649da026805798531fccdb2ace3f1d74632f56e4523ccbd2a47c0e",
+    "test_predictions.csv": "48596e8c4e47d9975c31ceae1aa3f1e49a13ac49164cca6da1ad7a53e2f99b69"
+  }
+}

@@ -52,7 +52,8 @@ class SubjectTrainingTests(unittest.TestCase):
         self.assertIn("subject", template)
         self.assertIn("G3", template)
         content = history_fixture("phy").to_csv(index=False).encode()
-        with patch("subject_training.train_and_evaluate", return_value=("fitted", {}, "results")) as train:
+        from types import SimpleNamespace
+        with patch("subject_training.train_and_evaluate", return_value=(SimpleNamespace(), {"feature_set": "expanded_v1", "selected_model": "fixture", "prediction_timing": "after period two"}, pd.DataFrame())) as train:
             saved = train_subject(content, "phy")
         used = train.call_args.args[0]
         self.assertEqual(list(used), [*FEATURES, "G3"])
@@ -64,3 +65,13 @@ class SubjectTrainingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 train_subject(content, "eng")
             train.assert_not_called()
+
+    def test_grade_only_history_needs_no_invented_support_values(self):
+        frame = history_fixture()[["subject", "student_id", "class_name", "G1", "G2", "G3"]]
+        clean = read_training_csv(frame.to_csv(index=False).encode(), "eng", "grades_v1")
+        self.assertNotIn("studytime", clean)
+        self.assertNotIn("famsup", clean)
+        with self.assertRaises(ValueError):
+            read_training_csv(frame.to_csv(index=False).encode(), "eng", "expanded_v1")
+        baseline = frame.drop(columns="G1")
+        self.assertTrue(read_training_csv(baseline.to_csv(index=False).encode(), "eng", "persistence_v1").G1.isna().all())

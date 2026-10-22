@@ -6,7 +6,7 @@ import csv
 import numpy as np
 import pandas as pd
 
-from model import FEATURES, ROOT, SUBJECTS, prediction_report, validate_frame
+from model import FEATURES, ROOT, SUBJECTS, prediction_report, validate_frame, observed_grades
 
 MAX_ROWS = 5000
 MAX_BYTES = 2 * 1024 * 1024
@@ -14,13 +14,14 @@ STATUSES = ["Outside grade scale", "Below reference", "Near reference", "Above r
 BANDS = ["Below 0", "0–<5", "5–<10", "10–<15", "15–20", "Above 20"]
 
 
-def validate_cohort(frame):
+def validate_cohort(frame, features=None):
+    features = FEATURES if features is None else list(features)
     if len(frame) > MAX_ROWS:
         raise ValueError(f"Upload no more than {MAX_ROWS:,} student records at a time.")
-    missing = sorted(set(["student_id", "class_name", *FEATURES]) - set(frame.columns))
+    missing = sorted(set(["student_id", "class_name", *features]) - set(frame.columns))
     if missing:
         raise ValueError("Missing columns: " + ", ".join(missing))
-    clean = validate_frame(frame).reset_index(drop=True)
+    clean = observed_grades(frame, validate_frame(frame, features=features)).reset_index(drop=True)
     for name in ("student_id", "class_name"):
         values = frame[name].reset_index(drop=True).astype("string").str.strip()
         if values.isna().any() or values.eq("").any() or values.str.len().gt(80).any():
@@ -35,12 +36,12 @@ def validate_cohort(frame):
         present = final.notna() & final.astype(str).str.strip().ne("")
         clean["actual_grade"] = np.nan
         if present.any():
-            checked = validate_frame(frame.reset_index(drop=True).loc[present], require_target=True)
+            checked = validate_frame(frame.reset_index(drop=True).loc[present], require_target=True, features=features)
             clean.loc[present, "actual_grade"] = checked["G3"].to_numpy()
     return clean
 
 
-def read_cohort_csv(content):
+def read_cohort_csv(content, features=None):
     if len(content) > MAX_BYTES:
         raise ValueError("Use a CSV file smaller than 2 MB.")
     try:
@@ -48,7 +49,7 @@ def read_cohort_csv(content):
                             dtype={"student_id": "string", "class_name": "string"}, nrows=MAX_ROWS + 1)
     except (UnicodeError, csv.Error, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
         raise ValueError("The file could not be read. Use a UTF-8 CSV with the template's column names.") from exc
-    return validate_cohort(frame)
+    return validate_cohort(frame, features)
 
 
 def example_cohort(subject, metrics):
@@ -56,7 +57,7 @@ def example_cohort(subject, metrics):
     frame = pd.read_csv(ROOT / "data" / f"student-{subject}.csv", sep=";").loc[metrics["split_rows"]["test"]].copy()
     frame["student_id"] = [f"{subject.upper()}-{index + 1:04d}" for index in frame.index]
     frame["class_name"] = "School " + frame["school"]
-    return validate_cohort(frame)
+    return validate_cohort(frame, metrics["features"])
 
 
 def analyse_cohort(fitted, frame, metrics, threshold):
@@ -91,6 +92,7 @@ def class_summary(report):
         students=("student_id", "size"), first_period_mean=("G1", "mean"),
         second_period_mean=("G2", "mean"), estimated_final_mean=("predicted_grade", "mean"),
         below_reference=("below_reference", "sum"), observed_declines=("declining", "sum"),
+        progress_available=("observed_change_G1_to_G2", "count"),
     ).reset_index()
 
 
@@ -113,7 +115,9 @@ def export_csv(frame):
     return safe.to_csv(index=False, lineterminator="\n").encode("utf-8-sig")
 
 
-def csv_template():
-    return export_csv(pd.DataFrame([dict(student_id="S001", class_name="Class A", G1=12, G2=13,
+def csv_template(features=None):
+    features = FEATURES if features is None else list(features)
+    example = pd.DataFrame([dict(student_id="S001", class_name="Class A", G1=12, G2=13,
         studytime=2, failures=0, traveltime=1, schoolsup="no", famsup="yes", paid="no",
-        activities="yes", internet="yes", higher="yes")]))
+        activities="yes", internet="yes", higher="yes")])
+    return export_csv(example[["student_id", "class_name", *features]])

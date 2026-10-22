@@ -257,6 +257,61 @@ class AppTests(unittest.TestCase):
         click(app, "Sign out")
         self.assertEqual(app.title[0].value, "Welcome back.")
 
+    def test_minimal_inputs_and_downloads_match_displayed_forecast(self):
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+        self.login(app)
+        self.assertNotIn("Weekly study time", [widget.label for widget in app.selectbox])
+        self.assertIsNone(app.number_input(key="profile_G1").value)
+        app.number_input(key="profile_G2").set_value(7)
+        with patch("streamlit.download_button", wraps=st.download_button) as downloads:
+            click(app, "Predict final grade")
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(metric(app, "Estimated final grade").value, "7.0 / 20")
+        self.assertEqual(metric(app, "Observed change: G1 to G2").value, "Unavailable")
+        saved = app.session_state["grade_report"]
+        call = next(call for call in downloads.call_args_list if call.args[0] == "Download this prediction report")
+        exported = pd.read_csv(BytesIO(call.args[1]))
+        self.assertEqual(exported.predicted_grade.iloc[0], 7)
+        self.assertEqual(exported.interval_lower.iloc[0], 6)
+        self.assertEqual(exported.bundle_id.iloc[0], saved["bundle_id"])
+        self.assertTrue(pd.isna(exported.G1.iloc[0]))
+        self.assertNotIn("studytime", exported)
+
+    def test_minimal_class_upload_and_alert_exports_are_separate_from_model_test(self):
+        AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+        self.login(app)
+        payload = b"student_id,class_name,G2,G3\na,Class A,9,9\nb,Class A,10,10\n"
+        with patch("streamlit.file_uploader", return_value=BytesIO(payload)):
+            with patch("streamlit.download_button", wraps=st.download_button) as downloads:
+                app.radio(key="cohort_source").set_value("Upload class CSV").run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(metric(app, "Students in view").value, "2")
+        alert_calls = {call.kwargs.get("key"): call for call in downloads.call_args_list
+                       if call.args[0] == "Download alert evaluation"}
+        cohort = pd.read_csv(BytesIO(alert_calls["cohort_alerts_mat"].args[1])).iloc[0]
+        model = pd.read_csv(BytesIO(alert_calls["model_alerts_mat"].args[1])).iloc[0]
+        self.assertEqual(cohort.evaluated, 2)
+        self.assertEqual(model.evaluated, 79)
+        self.assertEqual(cohort.precision, 1)
+        self.assertEqual(cohort.tp, 1)
+        self.assertEqual(cohort.tn, 1)
+        self.assertIn("Uploaded class", cohort.source)
+        self.assertEqual(cohort.bundle_id, model.bundle_id)
+
+    def test_each_feature_schema_has_matching_form_and_csv_requirements(self):
+        from model import FEATURE_SETS
+        from cohort import read_cohort_csv
+        for schema, features in FEATURE_SETS.items():
+            script = ("import streamlit as st\nfrom input_ui import profile_fields\n"
+                      f"with st.form('input'):\n    profile_fields({features!r})\n    st.form_submit_button('Submit')")
+            app = AppTest.from_string(script).run()
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual("Weekly study time" in [widget.label for widget in app.selectbox], schema == "expanded_v1")
+            self.assertEqual(app.number_input(key="profile_G1").value is None, "G1" not in features)
+            self.assertTrue(set(features).issubset(read_cohort_csv(csv_template(features), features)))
+
 
 if __name__ == "__main__":
     unittest.main()

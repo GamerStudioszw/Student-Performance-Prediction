@@ -1,25 +1,26 @@
 """Subject-specific training from validated history, kept only in the staff session."""
 
-from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
 
 import pandas as pd
-import sklearn
 
 from cohort import MAX_ROWS, export_csv, read_cohort_csv
-from model import FEATURES, PUBLIC_SUBJECTS, SUBJECTS, train_and_evaluate
+from model import FEATURES, FEATURE_SETS, PUBLIC_SUBJECTS, SUBJECTS, train_and_evaluate
+from model_service import finalize_bundle, session_bundle_compatible
 
 
-def training_template():
+def training_template(training_feature_set="expanded_v1"):
     # Header only: do not supply invented historical outcomes as training data.
-    return export_csv(pd.DataFrame(columns=["subject", "student_id", "class_name", *FEATURES, "G3"]))
+    return export_csv(pd.DataFrame(columns=["subject", "student_id", "class_name", *FEATURE_SETS[training_feature_set], "G3"]))
 
 
-def read_training_csv(content, subject):
+def read_training_csv(content, subject, training_feature_set="expanded_v1"):
     if subject not in SUBJECTS or subject in PUBLIC_SUBJECTS:
         raise ValueError("Select one of the subjects that requires uploaded training records.")
-    cohort = read_cohort_csv(content)
+    if training_feature_set not in FEATURE_SETS:
+        raise ValueError("Unknown training feature set.")
+    cohort = read_cohort_csv(content, FEATURE_SETS[training_feature_set])
     # The same bounded parser has already checked encoding, size and required inputs.
     raw = pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig",
                       dtype="string", nrows=MAX_ROWS + 1)
@@ -37,15 +38,12 @@ def read_training_csv(content, subject):
     return cohort
 
 
-def train_subject(content, subject):
-    history = read_training_csv(content, subject)
-    training = history[FEATURES].assign(G3=history.actual_grade.astype(int))
-    fitted, metrics, results = train_and_evaluate(training)
-    metrics.update(subject=subject, subject_label=SUBJECTS[subject],
-                   dataset_sha256=hashlib.sha256(content).hexdigest(),
-                   sklearn_version=sklearn.__version__, trained_at=datetime.now(timezone.utc).isoformat(),
-                   data_source="Uploaded subject history")
-    return {"bundle": (fitted, metrics, results), "history": history}
+def train_subject(content, subject, training_feature_set="expanded_v1", source="Staff-provided historical records"):
+    history = read_training_csv(content, subject, training_feature_set)
+    training = history[FEATURE_SETS[training_feature_set]].assign(G3=history.actual_grade.astype(int))
+    bundle = finalize_bundle(*train_and_evaluate(training, training_feature_set=training_feature_set),
+                             subject=subject, fingerprint=hashlib.sha256(content).hexdigest(), source=source)
+    return {"bundle": bundle, "history": history}
 
 
 def render_subject_training(subject):
@@ -54,13 +52,26 @@ def render_subject_training(subject):
 
     key = f"trained_subject_{subject}"
     saved = st.session_state.get(key)
+    if saved is not None and not session_bundle_compatible(saved["bundle"]):
+        st.warning("The previous session model uses an incompatible version. Re-upload or retrain the selected history before predicting.")
+        saved = None
     revision_key = f"training_revision_{subject}"
     with st.expander(f"{SUBJECTS[subject]} training records", expanded=saved is None):
         st.write(f"Build a separate {SUBJECTS[subject]} model from completed student records for this subject.")
         st.caption("Use 50–5,000 distinct students, up to 2 MB. Fifty is the technical minimum, not evidence of a reliable model. More representative records and evaluation on later cohorts are needed.")
-        st.download_button("Download training CSV template", training_template(),
+        mode = st.selectbox("Training input set", ["grades_v1", "expanded_v1", "persistence_v1"],
+                            format_func=lambda value: {"grades_v1": "G1 and G2: compare baselines, ridge and forest",
+                                                       "expanded_v1": "Expanded: compare all six candidates",
+                                                       "persistence_v1": "G2 only: compare persistence and mean baselines"}[value],
+                            key=f"training_mode_{subject}")
+        source = st.text_input("Training data source", value="Staff-provided historical records", max_chars=200,
+                               key=f"training_source_{subject}")
+        st.download_button("Download training CSV template", training_template(mode),
                            f"{subject}_training_template.csv", "text/csv", key=f"training_template_{subject}")
-        st.write(f"Fill `subject` with **{subject}** or **{SUBJECTS[subject]}** on every row. Include `student_id`, `class_name`, all 11 inputs, and completed final grades in `G3`.")
+        st.write(f"Fill `subject` with **{subject}** or **{SUBJECTS[subject]}** on every row. Include `student_id`, `class_name`, "
+                 f"{', '.join(FEATURE_SETS[mode])}, and completed final grades in `G3`.")
+        st.caption("Only candidates supported by the selected input set are compared, on identical rows and folds. "
+                   "No missing fields are invented or imputed. The winning predictor may require fewer inputs for new students.")
         st.caption("G1, G2 and G3: whole numbers 0–20. Use a consistent grading scale; do not enter marks out of 100 directly. Use one record per student and subject; repeated student codes are rejected.")
         st.dataframe(pd.DataFrame({
             "Input": ["studytime", "failures", "traveltime", "schoolsup, famsup, paid, activities, internet, higher"],
@@ -78,18 +89,20 @@ def render_subject_training(subject):
         if upload is not None:
             content = upload.getvalue()
             try:
-                history = read_training_csv(content, subject)
+                history = read_training_csv(content, subject, mode)
             except ValueError as exc:
                 st.error(str(exc))
                 return None
             fingerprint = hashlib.sha256(content).hexdigest()
-            current = saved is not None and saved["bundle"][1]["dataset_sha256"] == fingerprint
+            current = (saved is not None and saved["bundle"][1]["dataset_sha256"] == fingerprint
+                       and saved["bundle"][1]["training_feature_set"] == mode
+                       and saved["bundle"][1]["source"] == source)
             if not current:
                 st.write(f"{len(history):,} valid {SUBJECTS[subject]} records ready for training.")
                 if st.button(f"Train {SUBJECTS[subject]} model", type="primary", key=f"train_{subject}"):
                     try:
                         with st.spinner(f"Training and evaluating {SUBJECTS[subject]}…"):
-                            saved = train_subject(content, subject)
+                            saved = train_subject(content, subject, mode, source)
                     except ValueError as exc:
                         st.error(str(exc))
                         return None

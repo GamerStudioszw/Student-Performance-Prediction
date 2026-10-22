@@ -31,7 +31,7 @@ After signing in, staff land on **Class dashboard**. The four work areas are Cla
 
 The default **Historical example** uses only the selected model's held-out test records (79 mathematics or 130 Portuguese-language records). Its group labels are the two source schools, not invented classes. Training and calibration records are excluded from this example dashboard. These public records are clearly labelled and do not represent the staff member's institution.
 
-For your own cohort, choose **Upload class CSV** and download the template. Supply one row per student for the selected subject, using `student_id`, `class_name`, and all 11 input columns. Use anonymous student codes where possible. The import accepts UTF-8 comma- or semicolon-delimited CSV, up to 5,000 records and 2 MB. It validates numeric ranges, yes/no fields, duplicate student codes, and required columns. `G3` may optionally contain a known final grade or be blank; it is displayed but never passed to the model. Extra fields such as student names are ignored. Invalid files show an actionable error and do not leave a stale dashboard visible.
+For your own cohort, choose **Upload class CSV** and download the template. Supply one row per student for the selected subject, using `student_id`, `class_name`, and only the active predictor's required input columns, shown in the interface and template. For the current bundled predictors this is just `G2`. Optional `G1` enables recorded progress; blank G1 leaves progress unavailable. Use anonymous student codes where possible. The import accepts UTF-8 comma- or semicolon-delimited CSV, up to 5,000 records and 2 MB. It validates numeric ranges, yes/no fields, duplicate student codes, and required columns. `G3` may optionally contain a known final grade or be blank; it is displayed but never passed to the model. Extra fields such as student names are ignored. Invalid files show an actionable error and do not leave a stale dashboard visible.
 
 Uploaded class records are processed in the signed-in session and are not stored in the account database, shared in the global model cache, or used to retrain models. Separate training-history uploads for the seven additional subjects are described below. Signing out clears the session. Staff explicitly download any reports they want to retain. CSV exports neutralize spreadsheet formulas in supplied text labels.
 
@@ -41,7 +41,7 @@ Review categories are **Outside grade scale** (estimate outside 0–20), **Below
 
 Select English (`eng`), Physics (`phy`), Chemistry (`chem`), Biology (`bio`), Geography (`geo`), History (`hist`), or Computer Science (`cs`) in the sidebar:
 
-1. Download the header-only **training CSV template**. Supply actual completed records for that subject, with `subject`, a unique `student_id`, `class_name`, the 11 predictors and final grade `G3`. Every `subject` value must match the selected code or full subject name. Mixed subjects, missing outcomes and duplicate student codes are rejected.
+1. Download the header-only **training CSV template**. Supply actual completed records for that subject, with `subject`, a unique `student_id`, `class_name`, the selected training inputs and final grade `G3`. Choose `grades_v1` (G1 and G2, default), `expanded_v1` (all 11 fields), or `persistence_v1` (G2 only). Expanded comparison remains available when genuine support fields exist; missing fields are never manufactured or imputed. Every `subject` value must match the selected code or full subject name. Mixed subjects, missing outcomes and duplicate student codes are rejected.
 2. Upload 50–5,000 distinct students (up to 2 MB), then choose **Train [subject] model**. Grades must be whole numbers from 0 to 20 and final grades must contain at least two distinct values. The interface explains all category codes. Fifty records is only a technical minimum; it does not establish that the model is reliable. Do not enter marks out of 100 directly or invent missing learning-context values.
 3. Review **Model quality**: training-only cross-validation selects the estimator, a separate calibration partition sets the prediction range, and a held-out partition reports error, coverage and the G2-only benchmark. Splits are by unique student record, not by class, school or time; a later-cohort evaluation is still necessary.
 4. The **Held-out history** dashboard shows only that subject's test records. It provides grade distributions, group comparisons, review filters, tables and CSV reports. Choose **Upload class CSV** to analyse a new class, or use **Student analysis** for one student. An overlap warning identifies student codes already present in the training history.
@@ -52,19 +52,95 @@ No reference training datasets are bundled for these seven subjects, and no accu
 
 ## Hosted startup
 
-Point the hosting service at `app.py` and install `requirements.txt`. Binary `.joblib` files remain excluded from Git. On first access to mathematics or Portuguese, the app loads a compatible trusted artifact bundle if available; otherwise it trains and evaluates from the bundled public CSV and caches the entire bundle in process memory. Staff see a brief preparation message instead of a Python command. No writable artifact folder or external data download is required. Missing, incompatible, or outdated public models trigger the same recovery, including after a library-version change. Uploaded classes never enter this training process. The other seven subjects use the session-specific training workflow above.
+Point the hosting service at `app.py` and install `requirements.txt`. Binary `.joblib` files remain excluded from Git. On first access to mathematics or Portuguese, the app loads a compatible trusted artifact bundle if available; otherwise it trains and evaluates from the bundled public CSV and caches the entire bundle in process memory. Staff see a preparation message and an explicit notice if evaluation was recomputed. Historical evaluations are not overwritten. No writable artifact folder or external data download is required. Missing, incompatible, or outdated public models trigger the same recovery, including after a library-version change. Uploaded classes never enter this training process. The other seven subjects use the session-specific training workflow above.
 
-The cache is keyed by subject, schema and scikit-learn version, source data and model-code file timestamps, and artifact timestamps. It is shared only for the public model bundle. The signed-in account and uploaded student data are session-specific. `python train.py` remains available to administrators who want to prepare model artifacts in advance.
+The cache is keyed by subject, schema and scikit-learn version, source-data and model-code hashes, and active artifact content hashes. It is shared only for the public model bundle. The signed-in account and uploaded student data are session-specific. `python train.py` remains available to administrators who want to prepare model artifacts in advance.
 
-## Expanded school-grade model
+## Current predictor selection (schema 3)
 
-The Streamlit workspace now supports **11 inputs**: first- and second-period grades, study time, previous class failures, travel time to school, school support, family support, paid subject classes, extracurricular activities, home internet access, and plans for higher education. The reference grade is a user-selected comparison threshold, not a predictor.
+All candidates use identical five-fold splits within the fitting partition and the same mean absolute error (MAE) scoring. The fixed outer split remains 60% fitting, 20% calibration and 20% test, using seed 42. Numeric scaling is fitted inside each fold; yes/no categories are explicitly defined. Student codes, class labels and G3 are never predictors. No imputation is performed. G2 is always required after period two; a G1-only early-warning model would need its own training and evaluation.
+
+The candidates are G2 persistence, training-set mean, ridge on G1/G2, ridge on the 11 expanded fields, random forest on G1/G2, and random forest on the expanded fields. Ridge uses alpha 10; forests use 250 trees, minimum leaf size 3 and maximum depth 10. These modest fixed settings were not tuned against test outcomes. Reduced-input training compares the supported candidates on the same records rather than filling absent columns or dropping different rows for different candidates.
+
+The selection rule is fixed: find the lowest validation MAE; candidates within **0.02 grade points** of that minimum are effectively tied. Prefer, in order, G2 persistence (no learned weights), training mean, two-grade ridge, expanded ridge, two-grade forest, expanded forest. This small absolute tolerance is a transparent simplicity policy, not a statistical significance test. No test metric enters selection.
+
+Reproduced validation MAE (mean ± standard deviation across the same five folds):
+
+| Candidate | Versioned feature set | Mathematics | Portuguese |
+| --- | --- | ---: | ---: |
+| G2 persistence baseline | `persistence_v1`: G2 | 0.9551 ± 0.3000 | 0.7970 ± 0.1471 |
+| Training-mean baseline | `persistence_v1`: G2 required for timing, unused in the constant forecast | 3.5402 ± 0.0566 | 2.5020 ± 0.1496 |
+| Ridge, two grades | `grades_v1`: G1, G2 | 1.1667 ± 0.2567 | 0.8266 ± 0.1309 |
+| Ridge, expanded | `expanded_v1`: existing 11 fields | 1.1963 ± 0.2301 | 0.8386 ± 0.1241 |
+| Forest, two grades | `grades_v1` | 1.2226 ± 0.3070 | 0.8664 ± 0.1265 |
+| Forest, expanded | `expanded_v1` | 1.2782 ± 0.2753 | 0.9143 ± 0.0903 |
+
+**G2 persistence wins for both bundled subjects.** The active point forecast is exactly G3 = G2. Forms and class CSV templates require only G2; G1 remains optional for progress. An unknown G1 leaves progress blank, and group summaries count how many records have both grades. The six comparison candidates remain available for expanded training. No field was removed because of low permutation importance.
+
+## Reproduction and interval findings (22 October 2026)
+
+`audit_legacy.py` loads the training implementation from Git commit `6129c10`, checks the original data/model/metrics/result files and retrains that exact procedure. It writes a new timestamped audit under `artifacts/audits/`; it never replaces the original artifacts. Both data fingerprints and library versions matched. Recomputed saved-model predictions and retrained predictions agreed with the saved CSVs to about 3.6e-15. The reported old errors and interval coverage were reproduced.
+
+| Same reserved test records | Mathematics before | Mathematics now | Portuguese before | Portuguese now |
+| --- | ---: | ---: | ---: | ---: |
+| Predictor | Expanded ridge | G2 baseline | Expanded ridge | G2 baseline |
+| MAE | 1.4145 | 1.0000 | 0.7555 | 0.6769 |
+| RMSE | 2.1948 | 2.0715 | 1.1591 | 1.1701 |
+| R² | 0.7651 | 0.7907 | 0.8622 | 0.8596 |
+| Nominal interval coverage | 80% | 80% | 80% | 80% |
+| Observed test coverage | 54/79 (68.4%) | 66/79 (83.5%) | 103/130 (79.2%) | 122/130 (93.8%) |
+| Average interval width, grade points | 2.8963 | 2.0000 | 2.0134 | 2.0000 |
+| Calibration / test sample size | 79 / 79 | 79 / 79 | 130 / 130 | 130 / 130 |
+
+The new predictor improves MAE on these records; Portuguese RMSE and R² are slightly worse. This does not establish a learned-model improvement: the selected predictor is a baseline. **These test results had already informed the repair. Reusing the split supports a controlled comparison, not independent confirmation.** No favourable seed was searched. New institution-specific and later-cohort data are required for independent evaluation.
+
+The old interval formula was correct: the absolute calibration residual at rank `ceil((n+1)*0.8)` becomes the radius. The predictor is fixed before calibration; training, calibration and test rows are disjoint. Mathematics' old radius was 1.4481: it covered 64/79 calibration outcomes but only 54/79 test outcomes. Mean absolute error was 1.1356 in calibration versus 1.4145 in test. This demonstrates a less favourable realised test residual distribution, not an identified quantile bug or proof of a particular causal explanation. Intervals have not been widened to fit test coverage.
+
+Both new radii are 1.0, derived solely from their calibration records. Integer errors and ties can yield coverage above the nominal target. One absolute residual threshold means **constant interval width** for each predictor, not personalised uncertainty. Raw predictions and interval bounds are used consistently in calibration, metrics, charts and exports; no clipping is applied. If the finite-sample rank exceeds the available calibration count, training fails explicitly rather than silently capping the quantile. An 80% target is neither a student's probability of passing nor guaranteed coverage in another institution.
+
+Methods: [scikit-learn cross-validation documentation](https://scikit-learn.org/stable/modules/cross_validation.html) and [Angelopoulos and Bates on conformal prediction](https://arxiv.org/abs/2107.07511).
+
+## Alert evaluation and export provenance
+
+Recorded G1/G2, predicted G3, recorded G3 (when available), intervals, rule-based review categories and staff reference grades are labelled separately. The positive outcome is **recorded G3 strictly below the selected reference grade**; an alert is **predicted G3 strictly below that same grade**. Equality is not below reference. Alerts do not use interval overlap; interval overlap only contributes to the separate Near reference review category.
+
+The UI reports precision, recall, F1, true/false positives and negatives, evaluated counts, actual below-reference counts, alert counts and excluded missing outcomes. A zero denominator displays **Unavailable** and exports a blank value; a defined zero score remains zero. The confusion matrix uses recorded outcomes as rows and alert/no alert as columns. Model-quality alert metrics use reserved test records. Dashboard alert metrics use only selected groups from the labelled historical example or uploaded class and never replace the model's saved evaluation.
+
+Prediction and cohort exports include the active bundle ID, feature schema, subject context and prediction timing. Saved test predictions carry the same bundle ID. The model evaluation JSON includes CV fold errors and record partitions, provenance, calibration rank and coverage, preprocessing policy and limitations. Grade percentages are conversions, not pass probabilities; R² is not an accuracy percentage. Permutation importance describes predictor reliance, not causal effects or guaranteed interventions.
+
+## Artifact consistency
+
+`train.py` explicitly creates a new immutable run under `artifacts/v3/<subject>/<bundle_id>/`. A manifest hashes the model binary, metrics and test predictions; a per-subject pointer is published only after every file is complete. Legacy files are retained. Binaries remain excluded from Git. The loader checks feature and code versions, library version, data hash, fixed split, selection rule, calibration settings and model/bundle identity. It also recomputes saved test predictions, error metrics and the calibration radius against the active data before accepting a bundle.
+
+If a compatible bundle is absent or rejected, the app creates a whole new bundle in memory and displays a recomputation notice. It does not overwrite historical evidence or combine new predictions with old intervals. Private uploaded models remain outside the shared public cache. Old session bundles are invalidated after incompatible code/schema changes; users must retrain them. No permanent-history or multi-user changes were made.
+
+## Dataset compatibility and future collection
+
+The downloaded, untracked `data/halabja-grades.csv` remains untouched and is not used for prediction. Inspection found 16,823 data rows (the publisher reports 16,824 entries), 20 columns and 6,799 serial identifiers, with 40 duplicate student/year pairs. It contains annual multi-subject marks on a 0–100 scale, including decimals and many missing subject values. It has no direct period-one/period-two/final target definition matching G1/G2/G3 and lacks the expanded support fields. School-level Computer grades are not automatically equivalent to our Computer Science curriculum. Annual years must not be relabelled as grading periods. Its [source](https://zenodo.org/records/16623461), timing, duplicates, target and scale need a separate integration design; no invented mappings were made.
+
+Future attendance/assignment features require genuine historical snapshots at or before the prediction cutoff. Suggested collection fields (not current mandatory predictors):
+
+| Field | Definition |
+| --- | --- |
+| student_id, subject, class_id, school_id, cohort_year | Stable metadata for linkage and grouped/temporal evaluation |
+| prediction_cutoff, recorded_at | Cutoff after period two, and timestamp the snapshot was actually available |
+| attendance_sessions_possible, attendance_sessions_present | Counts up to the cutoff; missing is not zero |
+| assignments_due, assignments_submitted, assignments_late | Counts for assignments due by the cutoff; define late consistently |
+| assignment_points_earned, assignment_points_possible | Same cutoff and included-assignment definition; document denominators |
+| G1, G2, grade_scale | Recorded earlier grades with their assessment dates |
+| final_grade, final_grade_date | Later observed outcome, excluded from input snapshots |
+
+Derived attendance/completion rates need nonzero denominators. These variables should enter a future version only after timing and data sufficiency are verified, with preprocessing fitted inside training folds and evaluation on later cohorts or excluded schools. Synthetic fixtures may test software behaviour but cannot support predictive-quality claims.
+
+## Historical schema 2 evaluation (preserved evidence)
+
+The historical expanded training procedure used **11 inputs**: first- and second-period grades, study time, previous class failures, travel time to school, school support, family support, paid subject classes, extracurricular activities, home internet access, and plans for higher education. The reference grade is a user-selected comparison threshold, not a predictor.
 
 Reports include the final-grade estimate, its percentage equivalent, observed G1-to-G2 progress, predicted change from G2, margin to the reference grade, and a nominal 80% prediction range. Percentages and threshold comparisons are derived from the grade estimate; they are not separately trained outcomes or probabilities of passing. A downloadable CSV contains the submitted inputs and results. Results remain visible across reruns, are isolated by subject/model version, and are cleared on logout.
 
 Both original UCI subject files are bundled: **395 mathematics records** and **649 Portuguese-language records**. These are 1,044 subject records, not 1,044 unique students: some students occur in both files. Each subject has a separate model, calibration sample, and test set. Neither subject supplies training records to the other's model. This expands subject coverage without claiming that more rows in a different subject improve mathematics predictions. Source: [UCI Student Performance](https://archive.ics.uci.edu/dataset/320/student+performance), CC BY 4.0.
 
-Run `python train.py` using the project environment to train both models. The training procedure reserves 20% for final evaluation, then takes 25% of the remaining records for interval calibration (approximately 60% fitting, 20% calibration, 20% test overall). Mean baseline, ridge regression and random forest are compared using five-fold CV on fitting records only. A six-input ridge benchmark uses the same folds as the expanded ridge model. Preprocessing is fitted inside each fold. Calibration and test records are never used to fit or select the saved model.
+The historical schema 2 training procedure reserved 20% for final evaluation, then takes 25% of the remaining records for interval calibration (approximately 60% fitting, 20% calibration, 20% test overall). Mean baseline, ridge regression and random forest were compared using five-fold CV on fitting records only. A six-input ridge benchmark used the same folds as the expanded ridge model. G2 persistence was evaluated only after selection, which prevented it from winning. Preprocessing is fitted inside each fold. Calibration and test records are never used to fit or select the saved model.
 
 Prediction ranges use split conformal absolute residuals: for `n` calibration errors and nominal coverage `c=0.8`, use the `ceil((n+1)*c)`-th smallest error as the radius around the point estimate. These unbounded ranges may extend beyond 0–20. Coverage depends on exchangeable records from the same population; it is a marginal target, not an individual guarantee or a claim about a different school. See [Angelopoulos and Bates, A Gentle Introduction to Conformal Prediction](https://arxiv.org/abs/2107.07511).
 
@@ -79,9 +155,9 @@ Measured results for the expanded model (seed 42, ridge selected for both subjec
 | Eleven-input ridge CV MAE | 1.196 | 0.839 |
 | Actual coverage of nominal 80% range | 68.4% | 79.2% |
 
-**The extra inputs did not improve ridge CV error on these splits, and the G2-only benchmark had lower test error than the selected model.** The mathematics prediction range also substantially missed its nominal coverage target. The UI displays these limitations. The earlier mathematics model's MAE was 1.363, but that model used 316 fitting records without a calibration partition, so the old and new fitting procedures are not equivalent. More inputs and richer reports are implemented; stronger predictive accuracy has not been established.
+**The extra inputs did not improve ridge CV error on these splits, and the G2-only benchmark had lower test error than the selected model.** The mathematics prediction range also substantially missed its nominal coverage target. These historical findings motivated the schema 3 repair described above. The earlier mathematics model's MAE was 1.363, but that model used 316 fitting records without a calibration partition, so the old and new fitting procedures are not equivalent. More inputs and richer reports are implemented; stronger predictive accuracy has not been established.
 
-The evaluation page also reports RMSE, R², the fraction of errors within two grade points, and held-out permutation importance with repeat standard deviations. Importance describes model reliance, not causal effects or an individual explanation. Metrics record dataset SHA-256 hashes, row partitions, model/library version, and training timestamp for reproducibility. Files use the existing names for mathematics and the `por_` prefix for Portuguese language.
+The evaluation page also reports RMSE, R², the fraction of errors within two grade points, and held-out permutation importance with repeat standard deviations. Importance describes model reliance, not causal effects or an individual explanation. Metrics record dataset SHA-256 hashes, row partitions, model/library version, and training timestamp for reproducibility. The original schema 2 files keep the existing mathematics names and `por_` Portuguese prefix. The active schema 3 evaluations are separate immutable runs under `artifacts/v3/`.
 
 For a stronger school-grade dataset, collect recent records from the target schools across multiple cohorts. Record student/group identifiers for leakage-safe evaluation, subject and grading definitions, prediction dates, attendance up to that date, assignment marks, engagement, and later final outcomes. Test on later cohorts and schools excluded from fitting. Do not combine unrelated outcomes or duplicate rows to inflate the sample size. The bundled absences field has no verified period-two cutoff, so it is excluded.
 
@@ -143,7 +219,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run app.py --server.port 8502
 ```
 
-Alternatively, `./run.ps1 -Full` installs dependencies, trains if needed, and launches Streamlit on port 8502. Python 3.11 or later is recommended for this optional version. Dependencies are installed in the project's `.venv`; select `.venv\Scripts\python.exe` as your IDE interpreter. Package imports, `pip check`, and model training passed on Python 3.14.7.
+Alternatively, `./run.ps1 -Full` installs dependencies and launches Streamlit on port 8502. The app verifies or prepares its bundle; run `train.py` explicitly to save new immutable evaluation evidence. Python 3.11 or later is recommended for this optional version. Dependencies are installed in the project's `.venv`; select `.venv\Scripts\python.exe` as your IDE interpreter. Package imports, `pip check`, and model training passed on Python 3.14.7.
 
 Once installed and trained, run its tests separately:
 
@@ -154,6 +230,8 @@ Once installed and trained, run its tests separately:
 ```
 
 Run the complete suite with `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`. Tests cover both prediction implementations, staff dashboard filters, class uploads, group summaries, export safety, subject switching, report calculations, calibration quantiles, disjoint fitting/calibration/test partitions, both source files, first-time setup, failed login, restricted access, prediction after login, logout, session revocation and expiry, credential storage, and login throttling. Deployment tests also open the staff dashboard with an empty artifact directory and rebuild models with incompatible metadata. Browser preview tools were unavailable during development; visual browser verification remains outstanding.
+
+Repair verification on 22 October 2026: all 51 tests passed. This includes Streamlit AppTest smoke checks for authentication, both bundled subjects, individual prediction, minimal class uploads, custom-subject training, quality views and exported prediction/alert data. Historical artifact checksums remained unchanged. Visual browser verification and validation of the deployed Streamlit site were not performed for this repair.
 
 The two implementations use different random-number generators for their splits. Their metrics and model files are separate and should not be treated as a direct algorithm comparison.
 
@@ -166,7 +244,9 @@ The two implementations use different random-number generators for their splits.
 | `web/index.html` | Responsive browser interface |
 | `download_data.py` | Restores the original UCI subject CSV files when needed |
 | `data/student-mat.csv`, `data/student-por.csv` | Unmodified subject datasets, semicolon-delimited |
-| `artifacts/metrics.json`, `artifacts/por_metrics.json` | Expanded models' evaluation, calibration, provenance, and split records |
+| `artifacts/metrics.json`, `artifacts/por_metrics.json` | Preserved historical schema 2 evaluations |
+| `artifacts/v3/` | Active immutable schema 3 runs, integrity manifests and per-subject pointers |
+| `artifacts/audits/`, `audit_legacy.py` | Historical reproduction, checksums and repair evidence |
 | `artifacts/lite_model.json` | Trained model coefficients and preprocessing parameters |
 | `artifacts/lite_metrics.json` | Measured evaluation results |
 | `artifacts/lite_test_predictions.csv` | Held-out labels and predictions; source_row is the zero-based data-row index |
@@ -176,6 +256,7 @@ The two implementations use different random-number generators for their splits.
 | `auth.py`, `auth_ui.py` | Persistent local account storage, session checks, and login screen |
 | `model_service.py` | Compatible artifact loading and automatic in-memory model preparation |
 | `subject_training.py` | Validated per-subject history uploads, separate training and session-only storage |
+| `input_ui.py`, `quality_ui.py`, `evaluation_ui.py` | Schema-specific forms, model evaluation and labelled alert metrics |
 | `cohort.py`, `dashboard.py` | Cohort validation, staff summaries, charts, review tables, and exports |
 | `assets/app.css` | Responsive login design and matching workspace styling |
 | `tests/test_auth.py`, `tests/test_app.py` | Isolated authentication and Streamlit interaction tests |
@@ -184,7 +265,7 @@ The two implementations use different random-number generators for their splits.
 
 Source: Cortez, P. (2008). **Student Performance** [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5TG7T. [Dataset documentation](https://archive.ics.uci.edu/dataset/320/student+performance). License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Both bundled subject CSV files are unmodified copies of the source. They are modeled independently because some students appear in both subjects.
 
-The data contains historical records from two Portuguese schools. G1 and G2 are earlier grades strongly associated with the final grade. Predictions require both and are intended for after period two, not enrollment. Questionnaire timing should be verified before prospective use of support variables. Absences are omitted because their aggregation window may extend beyond the prediction point. Names and demographic attributes are not model inputs.
+The data contains historical records from two Portuguese schools. G1 and G2 are earlier grades strongly associated with the final grade. The active Streamlit predictors require G2; G1 is optional for reporting progress. The separate lightweight implementation requires both grades. All current predictions are intended for after period two, not enrollment. Questionnaire timing should be verified before prospective use of support variables. Absences are omitted because their aggregation window may extend beyond the prediction point. Names and demographic attributes are not model inputs.
 
 Study-time codes: 1 = under 2 hours/week, 2 = 2–5, 3 = 5–10, 4 = over 10. Failure values are limited to 0–3, the codes observed in the mathematics file; consult the original documentation before collecting new data. Grades are whole numbers from 0 to 20; support fields accept `yes` or `no`.
 
