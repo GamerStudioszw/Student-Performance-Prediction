@@ -1,6 +1,8 @@
 .venv/
 .wheelhouse/
 __pycache__/
+.ipynb_checkpoints/
+notebook-results/
 *.pyc
 artifacts/*.joblib
 artifacts/**/*.joblib

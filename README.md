@@ -4,6 +4,34 @@ A staff analytics app for teachers, lecturers, principals, headmasters, and head
 
 The subject selector also includes **English, Physics, Chemistry, Biology, Geography, History, and Computer Science**. These seven subjects require your own completed subject records before predictions are available. They do not reuse or relabel a mathematics model.
 
+## Google Colab and Jupyter Notebook
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GamerStudioszw/Student-Performance-Prediction/blob/main/notebooks/StudentInsight.ipynb)
+
+Open [`notebooks/StudentInsight.ipynb`](notebooks/StudentInsight.ipynb) to explore the same training, predictions and evaluation used by the app. It trains Mathematics and Portuguese, shows cross-validation comparisons and grade charts, evaluates intervals and below-reference alerts, and exports reports. CPU is sufficient. No Google API key or Drive connection is required.
+
+**Google Colab:** use the button above, connect to a runtime, and run the cells in order. The first cell clones this GitHub repository and installs its requirements. The current `main` branch must contain the notebook and repaired model code. An existing runtime checkout is reused without overwriting edits; start a fresh runtime for the latest version. If dependency installation asks for a restart, restart the runtime and run the cells again. Set `DOWNLOAD_IN_COLAB = True` in the export cell to download the experiment ZIP. Colab's runtime files are temporary, and a notebook copy in Drive does not preserve them automatically. See [Google's Colab documentation](https://research.google.com/colaboratory/faq.html).
+
+**Local Jupyter Notebook:** from the project folder, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run-notebook.ps1
+```
+
+For JupyterLab, append `-Lab`. The launcher installs notebook dependencies in `.venv`, registers **StudentInsight (.venv)** inside that environment, and opens the notebook on localhost. Select that kernel in Jupyter or select `.venv\Scripts\python.exe` in the VS Code notebook kernel picker. This avoids installing packages into one Python environment and running another.
+
+Manual setup, following the [Jupyter installation guide](https://jupyter.org/install):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-notebooks.txt
+.\.venv\Scripts\python.exe -m ipykernel install --sys-prefix --name studentinsight --display-name "StudentInsight (.venv)"
+.\.venv\Scripts\python.exe -m notebook notebooks/StudentInsight.ipynb
+```
+
+The notebook creates new experiment exports under `notebook-results/`, excluded from Git. Its default workflow leaves application artifact pointers unchanged. The optional `SAVE_APPLICATION_BUNDLE` cell explicitly saves a new local bundle through `model_service.py`; in Colab this affects only that runtime. Neither platform automatically synchronizes accounts, private student records or deployed models. Continue using Streamlit for the staff login/dashboard. Clear notebook outputs before committing notebooks containing private data; the supplied notebook is committed without outputs.
+
+Notebook verification on 26 October 2026: every cell executed in the local project kernel; both subjects' predictions and export bundle identities checked; both chart HTML outputs generated; original evaluation files and active artifact pointers unchanged. Jupyter's local server and authenticated ZIP download also passed. The hosted Colab runtime has not been exercised from a Google account.
+
 ## Open the login workspace
 
 The Streamlit app now includes a responsive StudentInsight sign-in screen, one-time owner account setup, and a protected prediction workspace. With the existing project environment installed, run:
