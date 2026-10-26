@@ -4,6 +4,22 @@ A staff analytics app for teachers, lecturers, principals, headmasters, and head
 
 The subject selector also includes **English, Physics, Chemistry, Biology, Geography, History, and Computer Science**. These seven subjects require your own completed subject records before predictions are available. They do not reuse or relabel a mathematics model.
 
+## Academic milestone submission
+
+The submission for **Bindura University of Science Education**, **Network Engineering**, module **Artificial Intelligence and Intelligent System**, supervised by **Mr C. Zano**, uses one chapter per milestone:
+
+1. Proposal: problem, objectives, methodology, literature and proposed team roles.
+2. Design: architecture, data pipeline, model selection and ethics.
+3. Prototype: implementation, validation comparison and measured evaluation.
+4. Integration: staff app, notebooks, Drive support, tests and operation.
+5. Final: conclusions, handover and assessment readiness.
+
+The [Word technical report](documents/milestones/StudentInsight_Five_Chapter_Report.docx), [12-slide PowerPoint presentation](documents/milestones/StudentInsight_Milestone_Presentation.pptx), and [15-minute demonstration guide](documents/milestones/StudentInsight_Demo_Guide.docx) document code baseline `88b1003` and the full **56-test passing suite** checked on 26 October 2026. The report supersedes the original proposal's scope for this submission; the earlier proposal is preserved.
+
+The [rendered report PDF](documents/milestones/StudentInsight_Five_Chapter_Report.pdf) is **15 pages including cover and references**, within the 20-page limit. All report and guide pages and all 12 slides were visually reviewed. PowerPoint package, layout, font, native-table and embedded-chart checks passed; these checks do not certify rendering in every Office version.
+
+Complete the group number, member names, student numbers and role allocations before submission. Rehearsal, the assessed live demonstration, supervisor review, and real Google authorization remain user activities. The materials distinguish implementation evidence from independent institutional validation and do not claim those activities have occurred.
+
 ## Google Colab and Jupyter Notebook
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GamerStudioszw/Student-Performance-Prediction/blob/main/notebooks/StudentInsight.ipynb)
