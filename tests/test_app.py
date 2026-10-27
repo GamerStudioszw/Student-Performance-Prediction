@@ -244,6 +244,53 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("grade_report", app.session_state)
         self.assertNotIn("Estimated final grade", [item.label for item in app.metric])
 
+    def test_named_single_student_report_and_identity_validation(self):
+        AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        self.login(app)
+        self.assertEqual(app.tabs[1].label, "Single-student prediction")
+        fill(app, "Student name (optional)", "Tariro Moyo")
+        fill(app, "Class / group (optional)", "Form 3A")
+        app.number_input(key="profile_G2").set_value(7)
+        with patch("streamlit.download_button", wraps=st.download_button) as downloads:
+            click(app, "Predict final grade")
+        self.assertEqual(len(app.exception), 0)
+        self.assertIn("Student: Tariro Moyo", [item.value for item in app.text])
+        report = app.session_state["grade_report"]["report"]
+        self.assertEqual(report.student_name.iloc[0], "Tariro Moyo")
+        self.assertEqual(report.class_name.iloc[0], "Form 3A")
+        self.assertEqual(report.student_id.iloc[0], "")
+        call = next(call for call in downloads.call_args_list if call.args[0] == "Download this prediction report")
+        exported = pd.read_csv(BytesIO(call.args[1]))
+        self.assertEqual(exported.student_name.iloc[0], "Tariro Moyo")
+        fill(app, "Student name (optional)", "Another Student")
+        click(app, "Predict final grade")
+        self.assertEqual(app.session_state["grade_report"]["report"].predicted_grade.iloc[0], report.predicted_grade.iloc[0])
+        fill(app, "Student name (optional)", "Bad\u202ename")
+        click(app, "Predict final grade")
+        self.assertEqual(len(app.exception), 0)
+        self.assertTrue(len(app.error))
+        self.assertNotIn("grade_report", app.session_state)
+
+    def test_names_only_class_upload_search_and_download(self):
+        AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        self.login(app)
+        content = b"student_name,class_name,G2\nTariro Moyo,Form 3A,12\nAlex Morgan,Form 3A,8\n"
+        with patch("streamlit.file_uploader", return_value=BytesIO(content)):
+            app.radio(key="cohort_source").set_value("Upload class CSV").run()
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(metric(app, "Students in view").value, "2")
+            table = next(item.value for item in app.dataframe if "Student name" in item.value.columns)
+            self.assertEqual(set(table["Student name"]), {"Tariro Moyo", "Alex Morgan"})
+            self.assertNotIn("Student ID", table.columns)
+            with patch("streamlit.download_button", wraps=st.download_button) as downloads:
+                app.text_input(key="cohort_search").set_value("tariro").run()
+            self.assertEqual(len(app.exception), 0)
+            call = next(call for call in downloads.call_args_list if call.args[0] == "Download filtered student report")
+            exported = pd.read_csv(BytesIO(call.args[1]))
+            self.assertEqual(exported.student_name.tolist(), ["Tariro Moyo"])
+
     def test_dashboard_filters_and_upload_empty_state(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
         app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()

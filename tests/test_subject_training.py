@@ -19,6 +19,20 @@ def history_fixture(subject="eng", rows=60):
 
 
 class SubjectTrainingTests(unittest.TestCase):
+    def test_names_only_history_stays_out_of_training_features(self):
+        frame = history_fixture().drop(columns="student_id")
+        frame["student_name"] = [f"Student {i}" for i in range(len(frame))]
+        content = frame.to_csv(index=False).encode()
+        clean = read_training_csv(content, "eng")
+        self.assertTrue(clean.student_id.eq("").all())
+        self.assertEqual(clean.student_name.tolist(), frame.student_name.tolist())
+        from types import SimpleNamespace
+        with patch("subject_training.train_and_evaluate", return_value=(SimpleNamespace(), {"feature_set": "expanded_v1", "selected_model": "fixture", "prediction_timing": "after period two"}, pd.DataFrame())) as train:
+            train_subject(content, "eng")
+        self.assertEqual(list(train.call_args.args[0]), [*FEATURES, "G3"])
+        self.assertNotIn("student_name", train.call_args.args[0])
+        self.assertIn("student_name", pd.read_csv(BytesIO(training_template(identifier="student_name"))))
+
     def test_subject_registry_and_public_model_boundary(self):
         self.assertEqual(len(SUBJECTS), 9)
         for subject in ["eng", "phy", "chem", "bio", "geo", "hist", "cs"]:

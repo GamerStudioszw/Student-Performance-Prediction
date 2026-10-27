@@ -22,17 +22,23 @@ def render_dashboard(model, metrics, subject, *, history=None):
     source = st.radio("Class data", [example_label, "Upload class CSV"], horizontal=True,
                       key="cohort_source" if history is None else f"cohort_source_{subject}")
     if source == "Upload class CSV":
-        st.download_button("Download class CSV template", csv_template(features), "class_template.csv", "text/csv")
+        identifier = st.selectbox("Identify students in the template", ["student_name", "student_id", "both"],
+                                  format_func=lambda value: {"student_name": "Student names", "student_id": "Student IDs",
+                                                             "both": "Names and IDs"}[value], key="class_template_identity")
+        if identifier not in ("student_name", "student_id", "both"):
+            st.error("Choose student names, student IDs, or both.")
+            return
+        st.download_button("Download class CSV template", csv_template(features, identifier), "class_template.csv", "text/csv")
         with st.expander("How to prepare your class file"):
-            st.write("Use one row per student for the selected subject, with a unique student code and class or group label. Grades use the 0–20 scale. Validate the model on later cohorts before relying on estimates for your institution.")
+            st.write("Use one row per student with student_name, student_id, or both, plus class_name. If two students share a name in the same class, give each a distinct student_id. Grades use the 0–20 scale.")
             st.write(f"Required prediction columns for {metrics['feature_set']}: " + ", ".join(features))
             st.dataframe(pd.DataFrame({"Column": features, "Meaning": [FEATURE_LABELS[name] for name in features]}),
                          hide_index=True, width="stretch")
-            st.caption("Include student_id and class_name as metadata. G1 is optional when not required by the predictor; "
+            st.caption("Names, IDs and classes label reports and never enter the model. G1 is optional when not required by the predictor; "
                        "a missing G1 leaves progress unavailable. Optional G3 is a recorded outcome, never an input. "
                        "G1/G2/G3: whole numbers 0–20; studytime/traveltime: codes 1–4; failures: 0–3; support fields: yes/no. "
                        "The template row is illustrative; replace it with actual records. No required field is filled automatically.")
-            st.caption("Class files are processed in your session and are not used to retrain the model. Limit: 5,000 rows / 2 MB. Only upload records you are authorised to use; student codes are enough.")
+            st.caption("Class files are processed in your session and are not used to retrain the model. Limit: 5,000 rows / 2 MB. Names appear in the table and downloaded reports; use student IDs if names are unnecessary.")
         upload = st.file_uploader("Upload a class file for this subject", type="csv", key=f"cohort_file_{subject}")
         if upload is None:
             st.info("Upload a class CSV to see your class dashboard.")
@@ -44,9 +50,11 @@ def render_dashboard(model, metrics, subject, *, history=None):
             return
         st.caption(f"UPLOADED CLASS DATA · {len(cohort):,} records · selected subject: {metrics['subject_label']}")
         if history is not None:
-            overlap = cohort.student_id.isin(history.student_id).sum()
+            overlap = (cohort.student_id.ne("") & cohort.student_id.isin(history.student_id[history.student_id.ne("")])).sum()
             if overlap:
                 st.warning(f"{overlap} student codes also occur in the training history. These are not an independent evaluation cohort; use new students to assess generalisation.")
+            if cohort.student_id.eq("").any() or history.student_id.eq("").any():
+                st.caption("Names alone cannot reliably establish whether students also appear in the training history. Use consistent IDs when checking for overlap.")
     else:
         if history is None:
             cohort = example_cohort(subject, metrics)
@@ -124,16 +132,20 @@ def render_dashboard(model, metrics, subject, *, history=None):
     with filters[0]:
         statuses = st.multiselect("Review status", STATUSES, default=STATUSES, key="cohort_statuses")
     with filters[1]:
-        query = st.text_input("Find student code", placeholder="e.g. S001", key="cohort_search")
-    visible = filter_cohort(report, groups, statuses, query).sort_values(["predicted_grade", "student_id"])
+        query = st.text_input("Find student name or ID", placeholder="e.g. Tariro or S001", key="cohort_search")
+    visible = filter_cohort(report, groups, statuses, query).sort_values(["predicted_grade", "student_name", "student_id"])
     if visible.empty:
         st.info("No student records match these table filters. The charts above still describe the selected groups.")
     else:
         columns = ["student_id", "class_name", "G1", "G2", "predicted_grade", "observed_change_G1_to_G2",
                    "interval_lower", "interval_upper", "review_status"]
+        if visible.student_name.ne("").any():
+            columns.insert(0, "student_name")
+        if not visible.student_id.ne("").any():
+            columns.remove("student_id")
         if "actual_grade" in visible:
             columns.append("actual_grade")
-        st.dataframe(visible[columns].rename(columns={"student_id": "Student code", "class_name": "Class / group",
+        st.dataframe(visible[columns].rename(columns={"student_name": "Student name", "student_id": "Student ID", "class_name": "Class / group",
             "predicted_grade": "Estimated final grade", "observed_change_G1_to_G2": "Observed change",
             "interval_lower": "Range lower", "interval_upper": "Range upper", "review_status": "Review status",
             "actual_grade": "Recorded final grade"}).round(2), hide_index=True, width="stretch", height=350)

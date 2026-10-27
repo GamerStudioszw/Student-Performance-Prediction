@@ -4,15 +4,15 @@ import hashlib
 
 import pandas as pd
 
-from cohort import export_csv, parse_csv, validate_cohort
+from cohort import export_csv, parse_csv, validate_cohort, identity_columns
 from validation import safe_text
 from model import FEATURES, FEATURE_SETS, PUBLIC_SUBJECTS, SUBJECTS, train_and_evaluate
 from model_service import finalize_bundle, session_bundle_compatible
 
 
-def training_template(training_feature_set="expanded_v1"):
+def training_template(training_feature_set="expanded_v1", identifier="student_id"):
     # Header only: do not supply invented historical outcomes as training data.
-    return export_csv(pd.DataFrame(columns=["subject", "student_id", "class_name", *FEATURE_SETS[training_feature_set], "G3"]))
+    return export_csv(pd.DataFrame(columns=["subject", *identity_columns(identifier), "class_name", *FEATURE_SETS[training_feature_set], "G3"]))
 
 
 def read_training_csv(content, subject, training_feature_set="expanded_v1"):
@@ -57,7 +57,7 @@ def render_subject_training(subject):
     revision_key = f"training_revision_{subject}"
     with st.expander(f"{SUBJECTS[subject]} training records", expanded=saved is None):
         st.write(f"Build a separate {SUBJECTS[subject]} model from completed student records for this subject.")
-        st.caption("Use 50–5,000 distinct students, up to 2 MB. Fifty is the technical minimum, not evidence of a reliable model. More representative records and evaluation on later cohorts are needed.")
+        st.caption("Use 50–5,000 distinct student records, up to 2 MB. Fifty is the technical minimum, not evidence of a reliable model. More representative records and evaluation on later cohorts are needed.")
         mode = st.selectbox("Training input set", ["grades_v1", "expanded_v1", "persistence_v1"],
                             format_func=lambda value: {"grades_v1": "G1 and G2: compare baselines, ridge and forest",
                                                        "expanded_v1": "Expanded: compare all six candidates",
@@ -68,19 +68,25 @@ def render_subject_training(subject):
             return None
         source = st.text_input("Training data source", value="Staff-provided historical records", max_chars=200,
                                key=f"training_source_{subject}")
-        st.download_button("Download training CSV template", training_template(mode),
+        identifier = st.selectbox("Identify students in the training template", ["student_name", "student_id", "both"],
+                                  format_func=lambda value: {"student_name": "Student names", "student_id": "Student IDs",
+                                                             "both": "Names and IDs"}[value], key=f"training_identity_{subject}")
+        if identifier not in ("student_name", "student_id", "both"):
+            st.error("Choose student names, student IDs, or both.")
+            return None
+        st.download_button("Download training CSV template", training_template(mode, identifier),
                            f"{subject}_training_template.csv", "text/csv", key=f"training_template_{subject}")
-        st.write(f"Fill `subject` with **{subject}** or **{SUBJECTS[subject]}** on every row. Include `student_id`, `class_name`, "
+        st.write(f"Fill `subject` with **{subject}** or **{SUBJECTS[subject]}** on every row. Include `student_name` or `student_id` (or both), `class_name`, "
                  f"{', '.join(FEATURE_SETS[mode])}, and completed final grades in `G3`.")
         st.caption("Only candidates supported by the selected input set are compared, on identical rows and folds. "
                    "No missing fields are invented or imputed. The winning predictor may require fewer inputs for new students.")
-        st.caption("G1, G2 and G3: whole numbers 0–20. Use a consistent grading scale; do not enter marks out of 100 directly. Use one record per student and subject; repeated student codes are rejected.")
+        st.caption("G1, G2 and G3: whole numbers 0–20. Use a consistent grading scale; do not enter marks out of 100 directly. Use one record per student and subject. Students sharing a name in the same class need distinct IDs; repeated IDs are rejected.")
         st.dataframe(pd.DataFrame({
             "Input": ["studytime", "failures", "traveltime", "schoolsup, famsup, paid, activities, internet, higher"],
             "Values": ["1: <2h; 2: 2–5h; 3: 5–10h; 4: >10h per week", "0–3 previous failures",
                        "1: <15m; 2: 15–30m; 3: 30–60m; 4: >60m", "yes or no"]
         }), hide_index=True, width="stretch")
-        st.caption("Use inputs known by the end of period two. Upload only records you are authorised to use, with student codes instead of names. Training data and models stay in this signed-in session; sign-out, session loss or a server restart requires re-uploading. They are not saved to Git or shared with other sessions.")
+        st.caption("Use inputs known by the end of period two. Names and IDs label reports and are excluded from model training. Upload only records you are authorised to use. Names appear in downloaded student reports. Training data and models stay in this signed-in session; sign-out, session loss or a server restart requires re-uploading.")
         upload = st.file_uploader(f"Upload completed {SUBJECTS[subject]} records", type="csv",
                                   key=f"training_file_{subject}_{st.session_state.get(revision_key, 0)}")
         if saved and st.button("Clear this subject model", key=f"clear_model_{subject}"):

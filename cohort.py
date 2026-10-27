@@ -2,6 +2,7 @@
 
 from io import StringIO
 import csv
+import unicodedata
 
 import numpy as np
 import pandas as pd
@@ -17,23 +18,46 @@ STATUSES = ["Outside grade scale", "Below reference", "Near reference", "Above r
 BANDS = ["Below 0", "0–<5", "5–<10", "10–<15", "15–20", "Above 20"]
 
 
+def student_details(student_name="", student_id="", class_name=""):
+    """Optional single-student labels; these never enter the predictor."""
+    return {key: safe_text(value, field=key, minimum=0, maximum=80)
+            for key, value in {"student_name": student_name, "student_id": student_id,
+                               "class_name": class_name}.items()}
+
+
+def identity_columns(identifier):
+    options = {"student_name": ["student_name"], "student_id": ["student_id"],
+               "both": ["student_name", "student_id"]}
+    if not isinstance(identifier, str) or identifier not in options:
+        raise ValueError("Choose student names, student IDs, or both.")
+    return options[identifier]
+
+
 def validate_cohort(frame, features=None):
     if not isinstance(frame, pd.DataFrame) or not frame.columns.is_unique:
         raise ValueError("Provide a table with unique column names.")
     features = FEATURES if features is None else list(features)
     if len(frame) > MAX_ROWS:
         raise ValueError(f"Upload no more than {MAX_ROWS:,} student records at a time.")
-    missing = sorted(set(["student_id", "class_name", *features]) - set(frame.columns))
+    missing = sorted(set(["class_name", *features]) - set(frame.columns))
     if missing:
         raise ValueError("Missing columns: " + ", ".join(missing))
     clean = observed_grades(frame, validate_frame(frame, features=features)).reset_index(drop=True)
-    for name in ("student_id", "class_name"):
-        values = frame[name].reset_index(drop=True).astype("string").str.strip()
-        if values.isna().any() or values.eq("").any() or values.str.len().gt(80).any():
-            raise ValueError(f"{name} must contain a nonempty code or label of at most 80 characters.")
-        clean[name] = values.map(lambda value: safe_text(value, field=name))
-    if clean.student_id.duplicated().any():
+    for name in ("student_id", "student_name", "class_name"):
+        values = (frame[name].reset_index(drop=True).astype("string").fillna("") if name in frame
+                  else pd.Series("", index=clean.index, dtype="string"))
+        clean[name] = values.map(lambda value: safe_text(value, field=name, minimum=1 if name == "class_name" else 0))
+    has_id = clean.student_id.ne("")
+    if (clean.student_name.eq("") & ~has_id).any():
+        raise ValueError("Each student needs a student_name or student_id. Include either column, or both.")
+    if clean.loc[has_id, "student_id"].duplicated().any():
         raise ValueError("student_id must be unique within the file. Remove repeated student records.")
+    # Do not invent persistent IDs from row positions or treat names as globally unique.
+    normalized = clean[["student_name", "class_name"]].map(
+        lambda value: " ".join(unicodedata.normalize("NFKC", value).casefold().split()))
+    ambiguous = normalized.duplicated(keep=False) & clean.student_name.ne("")
+    if (ambiguous & ~has_id).any():
+        raise ValueError("Students sharing a name in the same class need distinct student_id values. Remove accidental duplicate rows.")
     if "G3" in frame:
         final = frame["G3"].reset_index(drop=True)
         present = final.notna() & final.astype(str).str.strip().ne("")
@@ -94,6 +118,7 @@ def example_cohort(subject, metrics):
 def analyse_cohort(fitted, frame, metrics, threshold):
     report = prediction_report(fitted, frame, metrics, threshold)
     report["student_id"] = frame["student_id"].to_numpy()
+    report["student_name"] = frame.get("student_name", pd.Series("", index=frame.index)).to_numpy()
     report["class_name"] = frame["class_name"].to_numpy()
     if "actual_grade" in frame:
         report["actual_grade"] = frame["actual_grade"].to_numpy()
@@ -113,7 +138,10 @@ def analyse_cohort(fitted, frame, metrics, threshold):
 def filter_cohort(report, classes, statuses, query=""):
     selected = report[report.class_name.isin(classes) & report.review_status.isin(statuses)]
     if query.strip():
-        selected = selected[selected.student_id.str.contains(query.strip(), case=False, regex=False)]
+        matches = selected.student_id.str.contains(query.strip(), case=False, regex=False)
+        if "student_name" in selected:
+            matches |= selected.student_name.str.contains(query.strip(), case=False, regex=False)
+        selected = selected[matches]
     return selected.copy()
 
 
@@ -146,9 +174,9 @@ def export_csv(frame):
     return safe.to_csv(index=False, lineterminator="\n").encode("utf-8-sig")
 
 
-def csv_template(features=None):
+def csv_template(features=None, identifier="student_id"):
     features = FEATURES if features is None else list(features)
-    example = pd.DataFrame([dict(student_id="S001", class_name="Class A", G1=12, G2=13,
+    example = pd.DataFrame([dict(student_id="S001", student_name="Example Student", class_name="Class A", G1=12, G2=13,
         studytime=2, failures=0, traveltime=1, schoolsup="no", famsup="yes", paid="no",
         activities="yes", internet="yes", higher="yes")])
-    return export_csv(example[["student_id", "class_name", *features]])
+    return export_csv(example[[*identity_columns(identifier), "class_name", *features]])

@@ -12,7 +12,7 @@ from auth_ui import require_login
 from subject_training import render_subject_training
 from input_ui import profile_fields
 from quality_ui import render_model_quality
-from cohort import export_csv
+from cohort import export_csv, student_details
 
 st.set_page_config(page_title="StudentInsight | Staff analytics", page_icon="🎓", layout="wide")
 require_login()
@@ -67,27 +67,36 @@ with st.sidebar:
     st.caption("Uploaded records and private models are lost on sign-out, session loss or server restart.")
     st.caption(f"{metrics['rows']} subject records · {len(features)} required inputs")
 
-dashboard_tab, predict_tab, evaluation_tab, data_tab = st.tabs(["Class dashboard", "Student analysis", "Model quality", "Data guide"])
+dashboard_tab, predict_tab, evaluation_tab, data_tab = st.tabs(["Class dashboard", "Single-student prediction", "Model quality", "Data guide"])
 
 with dashboard_tab:
     render_dashboard(model, metrics, subject, history=history)
 
 with predict_tab:
-    st.subheader("Student learning profile")
+    st.subheader("Predict one student's final grade")
+    st.write("Enter one student's recorded grades below. No class file is needed.")
     st.caption("Use recorded values available after period two. Each subject has a separately selected predictor.")
     st.caption("Required inputs: " + ", ".join(features) + ". No missing input is invented or imputed.")
     with st.form("prediction"):
+        student_name = st.text_input("Student name (optional)", key="profile_student_name", max_chars=80,
+                                     placeholder="e.g. Tariro Moyo")
+        student_id = st.text_input("Student ID (optional)", key="profile_student_id", max_chars=80)
+        class_name = st.text_input("Class / group (optional)", key="profile_class_name", max_chars=80)
+        st.caption("Names, IDs and classes label the report; they do not affect the prediction.")
         student = profile_fields(features)
         threshold = st.number_input("Reference grade for comparison", 0, 20, 10,
                                     help="A threshold for interpreting the estimate. It is not a model input or an official pass rule.")
         submitted = st.form_submit_button("Predict final grade", type="primary", width="stretch")
     if submitted:
         try:
+            details = student_details(student_name, student_id, class_name)
             report = prediction_report(model, student, metrics, threshold)
         except ValueError as exc:
             st.session_state.pop("grade_report", None)
             st.error(str(exc))
             st.stop()
+        for field, value in details.items():
+            report[field] = value
         report["subject"] = SUBJECTS[subject]
         report["model"] = metrics["selected_model"]
         report["nominal_interval_coverage"] = metrics["interval"]["nominal_coverage"]
@@ -97,6 +106,12 @@ with predict_tab:
     if saved and saved["subject"] == subject and saved.get("bundle_id") == metrics["bundle_id"]:
         report = saved["report"]
         result = report.iloc[0]
+        if result.get("student_name", ""):
+            st.text(f"Student: {result['student_name']}")
+        if result.get("student_id", ""):
+            st.text(f"Student ID: {result['student_id']}")
+        if result.get("class_name", ""):
+            st.text(f"Class / group: {result['class_name']}")
         grade = float(result["predicted_grade"])
         cards = st.columns(3)
         cards[0].metric("Estimated final grade", f"{grade:.1f} / 20")

@@ -31,7 +31,7 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(cohort.student_id.tolist(), ["001", "002"])
         self.assertEqual(cohort.actual_grade.iloc[0], 14)
         self.assertTrue(pd.isna(cohort.actual_grade.iloc[1]))
-        self.assertNotIn("student_name", cohort)
+        self.assertEqual(cohort.student_name.tolist(), ["Ignored name", "Ignored name"])
         self.assertNotIn("G3", cohort)
         self.assertEqual(len(read_cohort_csv(csv_template())), 1)
 
@@ -94,6 +94,37 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(cohort.G1.iloc[1], 10)
         with self.assertRaises(ValueError):
             read_cohort_csv(csv_template(["G2"]), ["G1", "G2"])
+
+    def test_names_only_search_summary_and_export_preserve_identity(self):
+        frame = self.frame.drop(columns="student_id").assign(student_name=["Tariro Moyo", "Alex Morgan"])
+        clean = read_cohort_csv(frame.to_csv(index=False).encode())
+        self.assertEqual(clean.student_id.tolist(), ["", ""])
+        fitted = make_pipeline(DummyRegressor(strategy="constant", constant=10)).fit(clean, [9, 9])
+        report = analyse_cohort(fitted, clean, self.metrics, 10)
+        self.assertEqual(filter_cohort(report, ["Class A"], STATUSES, "tArIrO").student_name.tolist(), ["Tariro Moyo"])
+        self.assertEqual(class_summary(report).students.sum(), 2)
+        self.assertIn("Tariro Moyo", export_csv(report).decode("utf-8-sig"))
+        for identifier in ("student_name", "student_id", "both"):
+            self.assertEqual(len(read_cohort_csv(csv_template(["G2"], identifier), ["G2"])), 1)
+
+    def test_same_name_in_same_class_requires_distinct_ids(self):
+        frame = self.frame.drop(columns="student_id").assign(student_name=["Tariro Moyo", " tariro   moyo "])
+        with self.assertRaisesRegex(ValueError, "distinct student_id"):
+            validate_cohort(frame)
+        self.assertEqual(len(validate_cohort(frame.assign(student_id=["001", "002"]))), 2)
+        self.assertEqual(len(validate_cohort(frame.assign(class_name=["A", "B"]))), 2)
+        with self.assertRaises(ValueError):
+            validate_cohort(frame.assign(student_id=["001", ""]))
+
+    def test_names_cannot_bypass_validation_or_spreadsheet_protection(self):
+        base = self.frame.drop(columns="student_id")
+        for value in ("", None, "x" * 81, "Name\n", "Name\u202e"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_cohort(base.assign(student_name=value))
+        clean = validate_cohort(base.assign(student_name=["=1+1", "@person"]))
+        payload = export_csv(clean).decode("utf-8-sig")
+        self.assertIn("'=1+1", payload)
+        self.assertIn("'@person", payload)
 
 
 if __name__ == "__main__":
