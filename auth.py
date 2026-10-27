@@ -1,4 +1,4 @@
-"""Local, single-owner authentication for the Streamlit workspace."""
+"""Local staff accounts and sessions for the Streamlit workspace."""
 
 from contextlib import contextmanager
 import hashlib
@@ -34,26 +34,44 @@ class AuthStore:
         self.path = Path(path or os.environ.get("STUDENT_AUTH_DB", default))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as db:
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS owner (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
+            # Upgrade old installations atomically, including active sessions.
+            # The write lock also serializes simultaneous first requests.
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
                     username TEXT NOT NULL UNIQUE,
                     display_name TEXT NOT NULL,
                     salt BLOB NOT NULL,
                     password_hash BLOB NOT NULL
-                );
+                )
+            """)
+            legacy = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'owner'").fetchone()
+            if legacy:
+                db.execute("INSERT INTO users SELECT * FROM owner")
+                db.execute("ALTER TABLE sessions RENAME TO legacy_sessions")
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
-                    owner_id INTEGER NOT NULL REFERENCES owner(id),
+                    user_id INTEGER NOT NULL REFERENCES users(id),
                     expires_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS login_guard (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS account_login_guard (
+                    username TEXT PRIMARY KEY,
                     failures INTEGER NOT NULL DEFAULT 0,
                     blocked_until REAL NOT NULL DEFAULT 0
-                );
-                INSERT OR IGNORE INTO login_guard(id) VALUES (1);
+                )
             """)
+            if legacy:
+                db.execute("INSERT INTO sessions SELECT token_hash, owner_id, expires_at FROM legacy_sessions")
+                db.execute("""INSERT INTO account_login_guard
+                              SELECT owner.username, login_guard.failures, login_guard.blocked_until
+                              FROM owner CROSS JOIN login_guard""")
+                db.execute("DROP TABLE legacy_sessions")
+                db.execute("DROP TABLE owner")
+                db.execute("DROP TABLE login_guard")
 
     @contextmanager
     def connection(self):
@@ -68,9 +86,13 @@ class AuthStore:
 
     def needs_setup(self):
         with self.connection() as db:
-            return db.execute("SELECT 1 FROM owner").fetchone() is None
+            return db.execute("SELECT 1 FROM users").fetchone() is None
 
     def create_owner(self, display_name, username, password):
+        """Compatibility entry point for existing setup scripts."""
+        return self.create_account(display_name, username, password)
+
+    def create_account(self, display_name, username, password):
         display_name = display_name.strip()
         username = username.strip().lower()
         if not 1 <= len(display_name) <= 80:
@@ -83,24 +105,25 @@ class AuthStore:
         digest = _password_hash(password, salt)
         try:
             with self.connection() as db:
-                # The singleton primary key also prevents two concurrent setup requests.
-                db.execute("INSERT INTO owner VALUES (1, ?, ?, ?, ?)",
+                # UNIQUE enforces normalized usernames even for concurrent requests.
+                db.execute("INSERT INTO users (username, display_name, salt, password_hash) VALUES (?, ?, ?, ?)",
                            (username, display_name, salt, digest))
         except sqlite3.IntegrityError as exc:
-            raise AuthError("This workspace already has an account. Refresh the page to sign in.") from exc
+            raise AuthError("That username is already taken. Choose another username or sign in.") from exc
 
     def login(self, username, password):
         now = time.time()
         token = None
+        normalized_username = username.strip().lower()[:40]
         message = "The username or password is incorrect. Please try again."
         with self.connection() as db:
             # Serialize attempts across browser sessions; commit failures before raising.
             db.execute("BEGIN IMMEDIATE")
-            guard = db.execute("SELECT * FROM login_guard WHERE id = 1").fetchone()
+            db.execute("INSERT OR IGNORE INTO account_login_guard(username) VALUES (?)", (normalized_username,))
+            guard = db.execute("SELECT * FROM account_login_guard WHERE username = ?", (normalized_username,)).fetchone()
             if guard["blocked_until"] > now:
                 raise AuthError("Too many sign-in attempts. Wait one minute, then try again.")
-            owner = db.execute("SELECT * FROM owner WHERE username = ?",
-                               (username.strip().lower()[:40],)).fetchone()
+            owner = db.execute("SELECT * FROM users WHERE username = ?", (normalized_username,)).fetchone()
             # Unknown accounts still do the expensive hash; no plaintext credentials are saved.
             salt = owner["salt"] if owner else b"\x00" * 16
             digest = _password_hash(password[:128], salt)
@@ -109,14 +132,14 @@ class AuthStore:
             if owner and len(username.strip()) <= 40 and len(password) <= 128 and matched:
                 token = secrets.token_urlsafe(32)
                 db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
-                db.execute("INSERT INTO sessions VALUES (?, 1, ?)",
-                           (_token_hash(token), now + SESSION_SECONDS))
-                db.execute("UPDATE login_guard SET failures = 0, blocked_until = 0 WHERE id = 1")
+                db.execute("INSERT INTO sessions VALUES (?, ?, ?)",
+                           (_token_hash(token), owner["id"], now + SESSION_SECONDS))
+                db.execute("DELETE FROM account_login_guard WHERE username = ?", (normalized_username,))
             else:
                 failures = (0 if guard["blocked_until"] else guard["failures"]) + 1
                 blocked_until = now + COOLDOWN_SECONDS if failures >= MAX_ATTEMPTS else 0
-                db.execute("UPDATE login_guard SET failures = ?, blocked_until = ? WHERE id = 1",
-                           (failures, blocked_until))
+                db.execute("UPDATE account_login_guard SET failures = ?, blocked_until = ? WHERE username = ?",
+                           (failures, blocked_until, normalized_username))
                 if blocked_until:
                     message = "Too many sign-in attempts. Wait one minute, then try again."
         if token is None:
@@ -128,8 +151,8 @@ class AuthStore:
             return None
         with self.connection() as db:
             row = db.execute("""
-                SELECT owner.username, owner.display_name FROM sessions
-                JOIN owner ON owner.id = sessions.owner_id
+                SELECT users.username, users.display_name FROM sessions
+                JOIN users ON users.id = sessions.user_id
                 WHERE sessions.token_hash = ? AND sessions.expires_at > ?
             """, (_token_hash(token), time.time())).fetchone()
         return dict(row) if row else None

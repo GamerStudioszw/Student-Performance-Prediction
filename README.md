@@ -56,19 +56,19 @@ Drive integration verification: five file-operation tests passed, and the comple
 
 ## Open the login workspace
 
-The Streamlit app now includes a responsive StudentInsight sign-in screen, one-time owner account setup, and a protected prediction workspace. With the existing project environment installed, run:
+The Streamlit app includes a responsive StudentInsight sign-in screen, staff registration, and a protected prediction workspace. With the existing project environment installed, run:
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py --server.port 8502
 ```
 
-Open **http://127.0.0.1:8502**. The app always starts with **Sign in**. Existing users enter their username and password. If this installation has no account yet, choose **Create account**, enter your name, a username, and a passphrase of at least 15 characters, then sign in. The creation screen includes an **Already have an account? Sign in** route. There are no default credentials. Use **Sign out** in the sidebar to end your session.
+Open **http://127.0.0.1:8502**. The app always starts with **Sign in**. Existing users enter their username and password. New staff choose **Sign up**, enter their name, a unique username, and a passphrase of at least 15 characters, then sign in. **Sign up** stays available after other accounts have been created. The registration screen includes an **Already have an account? Sign in** route. There are no default credentials. Use **Sign out** in the sidebar to end your session.
 
-Accounts belong to the running installation's account database. A local account is not automatically available on a separately hosted copy, because account databases are excluded from Git. If that copy has no saved account, an attempted sign-in explains this and offers initial account setup. The app still supports one owner account per installation; this navigation change does not add public multi-user registration.
+Accounts belong to the running installation's account database. A local account is not automatically available on a separately hosted copy, because account databases are excluded from Git. Existing single-owner databases are upgraded automatically in one transaction, preserving the original username, password hash, and active sessions. Staff can register additional accounts without replacing the original account.
 
-The owner account persists in `.local/accounts.sqlite3`, which is excluded from Git. Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes with 600,000 iterations, following the [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session tokens are also hashed in the database and expire after eight hours. Five failed attempts pause sign-in for one minute across all sessions. A page refresh or a new browser tab may require signing in again because authentication is held in the Streamlit session. Tests use temporary databases via `STUDENT_AUTH_DB` and never create or change your real account.
+Accounts persist in `.local/accounts.sqlite3`, which is excluded from Git. Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes with 600,000 iterations, following the [OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Session tokens are also hashed in the database and expire after eight hours. Five failed attempts pause sign-in for that username for one minute across browser sessions; other accounts can still sign in. A page refresh or a new browser tab may require signing in again because authentication is held in the Streamlit session. Tests use temporary databases and never create or change your real account.
 
-This is a local, single-owner workspace bound to `127.0.0.1`. First-run setup closes once the account exists. There is no email recovery or public registration. The login protects `app.py`; the separate lightweight demo below remains unauthenticated. The source CSV and model artifacts are local project files, not encrypted by the login feature.
+Registration is open to anyone who can reach the app. All accounts have the same analytics features; uploads, privately trained models, and prediction results remain in their browser session and are cleared on sign-out. There is no email recovery, role management, or account approval workflow. The login protects `app.py`; the separate lightweight demo below remains unauthenticated. The source CSV and model artifacts are local project files, not encrypted by the login feature. Hosted installations need persistent storage for the account database; `STUDENT_AUTH_DB` can select its location.
 
 ## Staff dashboard
 
