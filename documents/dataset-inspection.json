@@ -1,0 +1,313 @@
+{
+  "review_date": "2026-10-27",
+  "status": "discovery_and_raw_inspection_only_no_model_training",
+  "method": {
+    "slp": "pandas chunked read with eight named source fields and one verified-empty trailing field; counts are before any exclusions",
+    "score_flag": "missing or nonnumeric score/full_score, score < 0, full_score <= 0, or score > full_score",
+    "independent_check": "English term file row count, unique student count and empty trailing field checked with csv.reader",
+    "cs1": "semicolon-delimited CSV; grade values are categorical codes, not continuous final marks"
+  },
+  "downloads": [
+    {
+      "file": "slp-termtest.zip",
+      "url": "https://raw.githubusercontent.com/yangyangyang-ailab/SLP-dataset/main/dataset/termtestRecord.zip",
+      "bytes": 22644210,
+      "sha256": "7d96c55faad2fd7ae12ec3cba52ebe76f6d7634dbb5387ec9e817c369fed2914"
+    },
+    {
+      "file": "slp-unittest.zip",
+      "url": "https://raw.githubusercontent.com/yangyangyang-ailab/SLP-dataset/main/dataset/unittestRecord.zip",
+      "bytes": 5653198,
+      "sha256": "620540f631271d8ffd430603a6da0475a49218486afcd003df5a393eff4cdc52"
+    },
+    {
+      "file": "cs1-classification.csv",
+      "url": "https://zenodo.org/api/records/8111596/files/classification_data.csv/content",
+      "bytes": 10387,
+      "sha256": "c2bf2d7b7bda492394a81aebb4c6aed4a80c254e6ab379d6c45a549c0abd196f",
+      "md5": "5ec48f4b9a5fae45af41d6e33b1cc680"
+    }
+  ],
+  "tables": [
+    {
+      "file": "termtestRecord/termtestRecord-BIO.csv",
+      "rows": 500562,
+      "students": 4448,
+      "exams": 8,
+      "student_exam_pairs": 20825,
+      "students_with_3plus_exams": 4251,
+      "invalid_score_rows": 68,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 16363,
+      "time_examples": [
+        "2017-02-27 09:17:19",
+        "2017-02-27 09:17:20",
+        "2017-02-27 09:17:21"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-CN.csv",
+      "rows": 382168,
+      "students": 4668,
+      "exams": 11,
+      "student_exam_pairs": 25575,
+      "students_with_3plus_exams": 4372,
+      "invalid_score_rows": 4066,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 19795,
+      "time_examples": [
+        "2017-03-02 11:00:13",
+        "2017-03-02 11:00:14",
+        "2017-03-02 11:00:15"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-ENG.csv",
+      "rows": 952128,
+      "students": 4669,
+      "exams": 9,
+      "student_exam_pairs": 25420,
+      "students_with_3plus_exams": 4373,
+      "invalid_score_rows": 39,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 22986,
+      "time_examples": [
+        "2017-08-22 21:24:41",
+        "2017-08-22 21:24:42",
+        "2017-08-22 21:24:43"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-GEO.csv",
+      "rows": 498042,
+      "students": 4352,
+      "exams": 8,
+      "student_exam_pairs": 20734,
+      "students_with_3plus_exams": 4252,
+      "invalid_score_rows": 17143,
+      "missing_time_rows": 8598,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 16767,
+      "time_examples": [
+        "2017-03-01 08:59:36",
+        "2017-03-01 08:59:37",
+        "2017-03-01 08:59:38"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-HIST.csv",
+      "rows": 735456,
+      "students": 4652,
+      "exams": 9,
+      "student_exam_pairs": 24902,
+      "students_with_3plus_exams": 4272,
+      "invalid_score_rows": 60408,
+      "missing_time_rows": 60382,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 22376,
+      "time_examples": [
+        "2017-06-08 17:06:29",
+        "2017-06-08 17:06:30",
+        "2017-06-08 17:06:31"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-MATH.csv",
+      "rows": 582560,
+      "students": 4668,
+      "exams": 10,
+      "student_exam_pairs": 25445,
+      "students_with_3plus_exams": 4373,
+      "invalid_score_rows": 0,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 20702,
+      "time_examples": [
+        "2017-03-01 17:09:13",
+        "2017-03-01 17:09:14",
+        "2017-03-01 17:09:15"
+      ]
+    },
+    {
+      "file": "termtestRecord/termtestRecord-PHY.csv",
+      "rows": 463913,
+      "students": 4339,
+      "exams": 3,
+      "student_exam_pairs": 12101,
+      "students_with_3plus_exams": 3846,
+      "invalid_score_rows": 0,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 11981,
+      "time_examples": [
+        "2018-01-27 13:33:33",
+        "2018-01-27 13:33:36",
+        "2018-01-27 13:33:37"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-BIO.csv",
+      "rows": 84037,
+      "students": 1941,
+      "exams": 106,
+      "student_exam_pairs": 9106,
+      "students_with_3plus_exams": 1156,
+      "invalid_score_rows": 2039,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 8142,
+      "time_examples": [
+        "2016/11/10 10:29",
+        "2016/11/10 10:44",
+        "2016/11/10 10:49"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-CHEM.csv",
+      "rows": 30056,
+      "students": 624,
+      "exams": 140,
+      "student_exam_pairs": 2496,
+      "students_with_3plus_exams": 362,
+      "invalid_score_rows": 400,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 2325,
+      "time_examples": [
+        "2018/10/26 19:15",
+        "2018/10/26 19:16",
+        "2018/10/26 19:34"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-CN.csv",
+      "rows": 146168,
+      "students": 1926,
+      "exams": 98,
+      "student_exam_pairs": 15845,
+      "students_with_3plus_exams": 1231,
+      "invalid_score_rows": 2609,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 10731,
+      "time_examples": [
+        "2016/12/23 11:55",
+        "2016/12/23 12:36",
+        "2016/12/23 12:37"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-ENG.csv",
+      "rows": 5074,
+      "students": 366,
+      "exams": 81,
+      "student_exam_pairs": 739,
+      "students_with_3plus_exams": 111,
+      "invalid_score_rows": 955,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 668,
+      "time_examples": [
+        "2017/12/23 16:55",
+        "2017/12/24 16:56",
+        "2018/1/19 14:41"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-GEO.csv",
+      "rows": 31414,
+      "students": 1135,
+      "exams": 111,
+      "student_exam_pairs": 4153,
+      "students_with_3plus_exams": 608,
+      "invalid_score_rows": 2701,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 3830,
+      "time_examples": [
+        "2016/11/17 12:10",
+        "2016/11/17 13:14",
+        "2016/11/17 15:43"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-HIST.csv",
+      "rows": 68279,
+      "students": 1610,
+      "exams": 165,
+      "student_exam_pairs": 8294,
+      "students_with_3plus_exams": 1062,
+      "invalid_score_rows": 3221,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 7293,
+      "time_examples": [
+        "2016/11/10 10:22",
+        "2016/11/10 10:30",
+        "2016/11/10 10:55"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-MATH.csv",
+      "rows": 57244,
+      "students": 1499,
+      "exams": 128,
+      "student_exam_pairs": 6791,
+      "students_with_3plus_exams": 828,
+      "invalid_score_rows": 1459,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 5874,
+      "time_examples": [
+        "2016/11/10 18:05",
+        "2016/11/10 18:32",
+        "2016/11/10 18:35"
+      ]
+    },
+    {
+      "file": "unittestRecord/unittestRecord-PHY.csv",
+      "rows": 38416,
+      "students": 664,
+      "exams": 192,
+      "student_exam_pairs": 3970,
+      "students_with_3plus_exams": 412,
+      "invalid_score_rows": 649,
+      "missing_time_rows": 0,
+      "nonempty_trailing_fields": 0,
+      "unique_times": 3619,
+      "time_examples": [
+        "2017/10/29 18:07",
+        "2017/10/31 21:37",
+        "2017/11/14 21:37"
+      ]
+    },
+    {
+      "file": "cs1-classification.csv",
+      "rows": 468,
+      "columns": [
+        "lab_1",
+        "delivery_time_lab_1",
+        "attempts_lab_1",
+        "lab_2",
+        "lab_3",
+        "grade"
+      ],
+      "missing": {
+        "lab_1": 0,
+        "delivery_time_lab_1": 0,
+        "attempts_lab_1": 0,
+        "lab_2": 0,
+        "lab_3": 0,
+        "grade": 0
+      },
+      "label_counts": {
+        "1": 200,
+        "0": 162,
+        "2": 106
+      }
+    }
+  ]
+}

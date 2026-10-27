@@ -99,6 +99,8 @@ Review categories are **Outside grade scale** (estimate outside 0–20), **Below
 
 ## Additional subjects
 
+See the [additional training dataset catalog](documents/dataset-catalog.md) for SLP school-subject assessments, CS1 programming results, OULAD learning activity and the existing Halabja annual-grade candidate. The catalog includes inspected record counts, source links and the preparation each dataset needs. Discovery does not automatically retrain or replace the app's models.
+
 Select English (`eng`), Physics (`phy`), Chemistry (`chem`), Biology (`bio`), Geography (`geo`), History (`hist`), or Computer Science (`cs`) in the sidebar:
 
 1. Download the header-only **training CSV template**. Supply actual completed records for that subject, with `subject`, `student_name` or `student_id` (or both), `class_name`, the selected training inputs and final grade `G3`. Choose `grades_v1` (G1 and G2, default), `expanded_v1` (all 11 fields), or `persistence_v1` (G2 only). Expanded comparison remains available when genuine support fields exist; missing fields are never manufactured or imputed. Every `subject` value must match the selected code or full subject name. Mixed subjects, missing outcomes, duplicate IDs and ambiguous names within a class are rejected.
