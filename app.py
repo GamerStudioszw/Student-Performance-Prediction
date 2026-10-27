@@ -52,21 +52,6 @@ else:
 features = metrics["features"]
 if "load_notice" in metrics and "recomputed" in metrics["load_notice"]:
     st.info(metrics["load_notice"])
-with st.sidebar:
-    st.header("Model context")
-    st.write(f"**Subject:** {SUBJECTS[subject]}\n\n**Target:** Final grade, G3 (0–20)\n\n**Prediction point:** After period two")
-    if history is None:
-        st.caption("An educational demonstration based on historical records from two Portuguese schools. Local validation is needed before using it with another school.")
-        st.link_button("View the UCI dataset", "https://archive.ics.uci.edu/dataset/320/student+performance")
-    else:
-        st.caption("Trained only on your uploaded records for this subject. Random held-out evaluation does not establish performance on future classes or other institutions. This model is available for this session only.")
-    st.divider()
-    st.write(f"**Selected predictor:** {metrics['selected_model']}")
-    st.caption(metrics["predictor_kind"] + ". Selected using training-only cross-validation.")
-    st.caption("Required: " + ", ".join(features) + ". After period two.")
-    st.caption("Uploaded records and private models are lost on sign-out, session loss or server restart.")
-    st.caption(f"{metrics['rows']} subject records · {len(features)} required inputs")
-
 dashboard_tab, predict_tab, evaluation_tab, data_tab = st.tabs(["Class dashboard", "Single-student prediction", "Model quality", "Data guide"])
 
 with dashboard_tab:
@@ -170,6 +155,9 @@ with data_tab:
         st.dataframe(data, hide_index=True, width="stretch")
     if history is None:
         st.caption("Source: Cortez, P. (2008). Student Performance. UCI Machine Learning Repository. DOI: 10.24432/C5TG7T. CC BY 4.0.")
+        st.link_button("View source dataset", "https://archive.ics.uci.edu/dataset/320/student+performance")
+    else:
+        st.caption("Uploaded records and private models remain in this session. Download reports before signing out.")
     st.write("This predictor estimates final performance after period two using the listed required inputs. It is not an early-enrollment prediction system. G2 must be recorded. Verify that every input was known by the end of period two, before the final outcome was known.")
     st.subheader("What would make the dataset stronger?")
     st.write("Collect recent, consented records from your target schools across several cohorts, using consistent subject and grading definitions. Timestamp attendance, assignment scores, and engagement before the prediction date, then record the final result later. Evaluate on later cohorts and schools excluded from training.")

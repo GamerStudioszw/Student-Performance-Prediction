@@ -66,9 +66,7 @@ def require_login():
         user = store.current_user(token)
         if user:
             with st.sidebar:
-                st.caption("YOUR WORKSPACE")
                 st.subheader(user["display_name"])
-                st.caption(f"@{user['username']}")
                 if st.button("Sign out", key="sign_out", width="stretch"):
                     store.logout(token)
                     _clear_session()
