@@ -41,7 +41,7 @@ def _submit_account(store, setup):
             _clear_session()
             st.session_state.update(auth_view="sign_in", auth_username=username.strip().lower(), account_created=True)
         else:
-            if not username.strip() or not password:
+            if not isinstance(username, str) or not isinstance(password, str) or not username.strip() or not password:
                 raise AuthError("Enter your username and password.")
             if store.needs_setup():
                 raise AuthError("No account is registered on this app yet. Choose Sign up below to create one.")

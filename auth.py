@@ -9,11 +9,16 @@ import re
 import secrets
 import sqlite3
 import time
+import unicodedata
+
+from validation import safe_text
 
 ITERATIONS = 600_000
 SESSION_SECONDS = 8 * 60 * 60
 MAX_ATTEMPTS = 5
 COOLDOWN_SECONDS = 60
+MAX_REGISTRATIONS_PER_MINUTE = 10
+MAX_SESSIONS_PER_ACCOUNT = 10
 
 
 class AuthError(ValueError):
@@ -64,6 +69,9 @@ class AuthStore:
                     blocked_until REAL NOT NULL DEFAULT 0
                 )
             """)
+            db.execute("""CREATE TABLE IF NOT EXISTS registration_guard (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                attempts INTEGER NOT NULL, resets_at REAL NOT NULL)""")
             if legacy:
                 db.execute("INSERT INTO sessions SELECT token_hash, owner_id, expires_at FROM legacy_sessions")
                 db.execute("""INSERT INTO account_login_guard
@@ -93,14 +101,27 @@ class AuthStore:
         return self.create_account(display_name, username, password)
 
     def create_account(self, display_name, username, password):
-        display_name = display_name.strip()
-        username = username.strip().lower()
-        if not 1 <= len(display_name) <= 80:
-            raise AuthError("Enter your name (up to 80 characters).")
+        try:
+            display_name = safe_text(display_name, field="Name", maximum=80)
+            username = safe_text(username, field="Username", maximum=80).lower()
+        except ValueError as exc:
+            raise AuthError(str(exc)) from exc
         if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{2,39}", username):
             raise AuthError("Use 3–40 letters, numbers, dots, underscores or hyphens for your username. Start with a letter or number.")
-        if not 15 <= len(password) <= 128 or not password.strip():
+        if (not isinstance(password, str) or not 15 <= len(password) <= 128
+                or not password.strip() or any(unicodedata.category(c) in {"Cc", "Cs"} for c in password)):
             raise AuthError("Use a password or passphrase with 15–128 characters.")
+        # Reserve an attempt before expensive hashing. Commit independently so failed
+        # and duplicate registrations cannot bypass this installation-wide budget.
+        now = time.time()
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            guard = db.execute("SELECT * FROM registration_guard WHERE id=1").fetchone()
+            if guard and guard["resets_at"] > now and guard["attempts"] >= MAX_REGISTRATIONS_PER_MINUTE:
+                raise AuthError("Too many account creation attempts. Wait one minute, then try again.")
+            attempts = guard["attempts"] + 1 if guard and guard["resets_at"] > now else 1
+            resets_at = guard["resets_at"] if guard and guard["resets_at"] > now else now + 60
+            db.execute("INSERT OR REPLACE INTO registration_guard VALUES (1, ?, ?)", (attempts, resets_at))
         salt = secrets.token_bytes(16)
         digest = _password_hash(password, salt)
         try:
@@ -112,18 +133,26 @@ class AuthStore:
             raise AuthError("That username is already taken. Choose another username or sign in.") from exc
 
     def login(self, username, password):
+        message = "The username or password is incorrect. Please try again."
+        if (not isinstance(username, str) or not isinstance(password, str)
+                or not 1 <= len(username) <= 80 or not 1 <= len(password) <= 128
+                or any(unicodedata.category(c) in {"Cc", "Cs"} for c in password)):
+            raise AuthError(message)
+        normalized_username = username.strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{2,39}", normalized_username):
+            raise AuthError(message)
         now = time.time()
         token = None
-        normalized_username = username.strip().lower()[:40]
-        message = "The username or password is incorrect. Please try again."
         with self.connection() as db:
             # Serialize attempts across browser sessions; commit failures before raising.
             db.execute("BEGIN IMMEDIATE")
-            db.execute("INSERT OR IGNORE INTO account_login_guard(username) VALUES (?)", (normalized_username,))
-            guard = db.execute("SELECT * FROM account_login_guard WHERE username = ?", (normalized_username,)).fetchone()
+            owner = db.execute("SELECT * FROM users WHERE username = ?", (normalized_username,)).fetchone()
+            # One bounded bucket for nonexistent users prevents random-name DB growth.
+            guard_key = normalized_username if owner else ":unknown:"
+            db.execute("INSERT OR IGNORE INTO account_login_guard(username) VALUES (?)", (guard_key,))
+            guard = db.execute("SELECT * FROM account_login_guard WHERE username = ?", (guard_key,)).fetchone()
             if guard["blocked_until"] > now:
                 raise AuthError("Too many sign-in attempts. Wait one minute, then try again.")
-            owner = db.execute("SELECT * FROM users WHERE username = ?", (normalized_username,)).fetchone()
             # Unknown accounts still do the expensive hash; no plaintext credentials are saved.
             salt = owner["salt"] if owner else b"\x00" * 16
             digest = _password_hash(password[:128], salt)
@@ -134,12 +163,16 @@ class AuthStore:
                 db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
                 db.execute("INSERT INTO sessions VALUES (?, ?, ?)",
                            (_token_hash(token), owner["id"], now + SESSION_SECONDS))
-                db.execute("DELETE FROM account_login_guard WHERE username = ?", (normalized_username,))
+                db.execute("""DELETE FROM sessions WHERE user_id = ? AND token_hash IN (
+                    SELECT token_hash FROM sessions WHERE user_id = ?
+                    ORDER BY expires_at DESC, rowid DESC LIMIT -1 OFFSET ?)""",
+                    (owner["id"], owner["id"], MAX_SESSIONS_PER_ACCOUNT))
+                db.execute("DELETE FROM account_login_guard WHERE username = ?", (guard_key,))
             else:
                 failures = (0 if guard["blocked_until"] else guard["failures"]) + 1
                 blocked_until = now + COOLDOWN_SECONDS if failures >= MAX_ATTEMPTS else 0
                 db.execute("UPDATE account_login_guard SET failures = ?, blocked_until = ? WHERE username = ?",
-                           (failures, blocked_until, normalized_username))
+                           (failures, blocked_until, guard_key))
                 if blocked_until:
                     message = "Too many sign-in attempts. Wait one minute, then try again."
         if token is None:
@@ -147,7 +180,7 @@ class AuthStore:
         return token
 
     def current_user(self, token):
-        if not isinstance(token, str) or not token:
+        if not isinstance(token, str) or not 1 <= len(token) <= 128 or not token.isascii():
             return None
         with self.connection() as db:
             row = db.execute("""
@@ -158,6 +191,6 @@ class AuthStore:
         return dict(row) if row else None
 
     def logout(self, token):
-        if token:
+        if isinstance(token, str) and 1 <= len(token) <= 128 and token.isascii():
             with self.connection() as db:
                 db.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))

@@ -1,20 +1,25 @@
 """Validated cohort inputs and staff-facing summaries, independent of the UI."""
 
-from io import BytesIO
+from io import StringIO
 import csv
 
 import numpy as np
 import pandas as pd
 
 from model import FEATURES, ROOT, SUBJECTS, prediction_report, validate_frame, observed_grades
+from validation import safe_text
 
 MAX_ROWS = 5000
 MAX_BYTES = 2 * 1024 * 1024
+MAX_COLUMNS = 64
+MAX_CELL_CHARS = 1000
 STATUSES = ["Outside grade scale", "Below reference", "Near reference", "Above reference"]
 BANDS = ["Below 0", "0–<5", "5–<10", "10–<15", "15–20", "Above 20"]
 
 
 def validate_cohort(frame, features=None):
+    if not isinstance(frame, pd.DataFrame) or not frame.columns.is_unique:
+        raise ValueError("Provide a table with unique column names.")
     features = FEATURES if features is None else list(features)
     if len(frame) > MAX_ROWS:
         raise ValueError(f"Upload no more than {MAX_ROWS:,} student records at a time.")
@@ -26,9 +31,7 @@ def validate_cohort(frame, features=None):
         values = frame[name].reset_index(drop=True).astype("string").str.strip()
         if values.isna().any() or values.eq("").any() or values.str.len().gt(80).any():
             raise ValueError(f"{name} must contain a nonempty code or label of at most 80 characters.")
-        if values.str.contains(r"[\x00-\x1f\x7f]", regex=True).any():
-            raise ValueError(f"{name} must not contain control characters.")
-        clean[name] = values.astype(str)
+        clean[name] = values.map(lambda value: safe_text(value, field=name))
     if clean.student_id.duplicated().any():
         raise ValueError("student_id must be unique within the file. Remove repeated student records.")
     if "G3" in frame:
@@ -41,15 +44,43 @@ def validate_cohort(frame, features=None):
     return clean
 
 
-def read_cohort_csv(content, features=None):
+def parse_csv(content):
+    """Parse once without header mangling, implicit indexes or type guessing."""
+    if not isinstance(content, bytes):
+        raise ValueError("Provide a UTF-8 CSV file as bytes.")
     if len(content) > MAX_BYTES:
         raise ValueError("Use a CSV file smaller than 2 MB.")
     try:
-        frame = pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig",
-                            dtype={"student_id": "string", "class_name": "string"}, nrows=MAX_ROWS + 1)
-    except (UnicodeError, csv.Error, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
+        text = content.decode("utf-8-sig")
+        if "\x00" in text:
+            raise ValueError("CSV files must not contain null bytes.")
+        dialect = csv.Sniffer().sniff(text.splitlines()[0], delimiters=",;\t")
+        reader = csv.reader(StringIO(text, newline=""), dialect, strict=True)
+        header = next(reader)
+        if not 1 <= len(header) <= MAX_COLUMNS:
+            raise ValueError(f"Use at most {MAX_COLUMNS} CSV columns.")
+        for name in header:
+            if safe_text(name, field="Column name") != name:
+                raise ValueError("Column names must not have leading or trailing spaces.")
+        if len(set(name.casefold() for name in header)) != len(header):
+            raise ValueError("CSV column names must be unique; duplicate headers are not allowed.")
+        rows = []
+        for row_number, row in enumerate(reader, start=2):
+            if len(rows) >= MAX_ROWS:
+                raise ValueError(f"Upload no more than {MAX_ROWS:,} student records at a time.")
+            if len(row) != len(header):
+                raise ValueError(f"CSV row {row_number} must have exactly {len(header)} fields.")
+            if any(len(value) > MAX_CELL_CHARS for value in row):
+                raise ValueError(f"CSV row {row_number} contains a field longer than {MAX_CELL_CHARS} characters.")
+            rows.append(row)
+    except (UnicodeError, csv.Error, IndexError, StopIteration) as exc:
         raise ValueError("The file could not be read. Use a UTF-8 CSV with the template's column names.") from exc
-    return validate_cohort(frame, features)
+    # Preserve literal identifiers such as NA and 001; only empty cells are missing.
+    return pd.DataFrame(rows, columns=header, dtype="string").replace("", pd.NA)
+
+
+def read_cohort_csv(content, features=None):
+    return validate_cohort(parse_csv(content), features)
 
 
 def example_cohort(subject, metrics):

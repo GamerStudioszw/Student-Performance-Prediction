@@ -70,6 +70,12 @@ Accounts persist in `.local/accounts.sqlite3`, which is excluded from Git. Passw
 
 Registration is open to anyone who can reach the app. All accounts have the same analytics features; uploads, privately trained models, and prediction results remain in their browser session and are cleared on sign-out. There is no email recovery, role management, or account approval workflow. The login protects `app.py`; the separate lightweight demo below remains unauthenticated. The source CSV and model artifacts are local project files, not encrypted by the login feature. Hosted installations need persistent storage for the account database; `STUDENT_AUTH_DB` can select its location.
 
+## Security verification
+
+See [SECURITY.md](SECURITY.md) for enforced input limits, authentication safeguards, artifact trust boundaries, and deployment limitations. Run `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then `.\.venv\Scripts\python.exe verify.py` for the complete test suite, dependency compatibility checks, and strict online vulnerability audit. Any failure returns a nonzero exit status; detailed evidence is saved under `.local/verification/`. GitHub runs the same verification on pushes to `main` and pull requests.
+
+The CSV importer rejects duplicate headers and uneven rows instead of guessing their meaning. Uploads are limited to 2 MiB and 5,000 records. Account creation is limited to ten attempts per installation per minute; each account can retain up to ten active sessions. Registration stays available for additional staff.
+
 ## Staff dashboard
 
 After signing in, staff land on **Class dashboard**. The four work areas are Class dashboard, Student analysis, Model quality, and Data guide. The subject selector is in the sidebar.

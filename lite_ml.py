@@ -13,9 +13,13 @@ LIMITS = {"G1": (0, 20), "G2": (0, 20), "studytime": (1, 4), "failures": (0, 3)}
 
 
 def features(record):
+    if not isinstance(record, dict):
+        raise ValueError("Provide one student record as an object.")
     values = []
     for name, (low, high) in LIMITS.items():
         try:
+            if isinstance(record[name], bool):
+                raise ValueError("Boolean grades are not allowed.")
             value = float(record[name])
         except (KeyError, TypeError, ValueError):
             raise ValueError(f"{name} is required and must be a whole number.") from None

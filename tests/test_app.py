@@ -1,6 +1,7 @@
 """Exercise the real login, setup, prediction and logout flows."""
 
 import os
+import sqlite3
 from pathlib import Path
 import tempfile
 import unittest
@@ -216,6 +217,32 @@ class AppTests(unittest.TestCase):
         self.assertEqual(app.text_input(key="auth_password").value, "")
         self.assertEqual(len(app.error), 0)
         self.assertTrue(AuthStore().needs_setup())
+
+    def test_database_failure_does_not_expose_details_or_open_dashboard(self):
+        AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        fill(app, "Username", "alex")
+        fill(app, "Password", PASSWORD)
+        with patch("auth.AuthStore.login", side_effect=sqlite3.OperationalError("private/database/path")):
+            click(app, "Sign in →")
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(len(app.tabs), 0)
+        self.assertIn("account store is unavailable", app.error[0].value)
+        self.assertNotIn("private/database/path", app.error[0].value)
+        self.assertEqual(app.text_input(key="auth_password").value, "")
+
+    def test_invalid_profile_clears_previous_prediction(self):
+        AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        self.login(app)
+        click(app, "Predict final grade")
+        self.assertIn("Estimated final grade", [item.label for item in app.metric])
+        with patch("input_ui.profile_fields", return_value=pd.DataFrame({"G2": [True]})):
+            click(app, "Predict final grade")
+        self.assertEqual(len(app.exception), 0)
+        self.assertTrue(len(app.error))
+        self.assertNotIn("grade_report", app.session_state)
+        self.assertNotIn("Estimated final grade", [item.label for item in app.metric])
 
     def test_dashboard_filters_and_upload_empty_state(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)

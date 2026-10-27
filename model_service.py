@@ -3,8 +3,10 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import pickle
+import re
 import uuid
 
 import joblib
@@ -21,12 +23,53 @@ ARTIFACT_DIR = ROOT / "artifacts" / "v3"
 
 
 def file_hash(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _read_json(path):
+    with Path(path).open("rb") as stream:
+        content = stream.read(1024 * 1024 + 1)
+    if len(content) > 1024 * 1024:
+        raise ValueError("Artifact metadata exceeds the size limit.")
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate artifact metadata key.")
+            result[key] = value
+        return result
+    def invalid_constant(value):
+        raise ValueError("Non-finite artifact metadata is not allowed.")
+    def finite_float(value):
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError("Non-finite artifact metadata is not allowed.")
+        return parsed
+    try:
+        result = json.loads(content, object_pairs_hook=unique_object, parse_constant=invalid_constant,
+                            parse_float=finite_float)
+    except RecursionError as exc:
+        raise ValueError("Artifact metadata is nested too deeply.") from exc
+    if not isinstance(result, dict):
+        raise ValueError("Artifact metadata must be a JSON object.")
+    return result
+
+
+def _bundle_directory(artifact_dir, subject, identifier):
+    if (not isinstance(subject, str) or subject not in SUBJECTS or not isinstance(identifier, str)
+            or re.fullmatch(r"[0-9a-f]{32}", identifier) is None):
+        raise ValueError("Invalid bundle subject or identity.")
+    root = Path(artifact_dir).resolve()
+    directory = root / subject / identifier
+    if not directory.resolve().is_relative_to(root):
+        raise ValueError("Artifact paths must stay inside the artifact directory.")
+    return directory
 
 
 def code_fingerprint():
     return hashlib.sha256(b"".join((ROOT / name).read_bytes()
-                                  for name in ("model.py", "model_service.py"))).hexdigest()
+                                  for name in ("model.py", "model_service.py", "validation.py"))).hexdigest()
 
 
 def finalize_bundle(fitted, metrics, results, *, subject, fingerprint, source):
@@ -49,21 +92,21 @@ def session_bundle_compatible(bundle):
                 and metrics["sklearn_version"] == sklearn.__version__
                 and metrics["features"] == FEATURE_SETS[metrics["feature_set"]]
                 and fitted.bundle_id_ == metrics["bundle_id"])
-    except (KeyError, TypeError, AttributeError):
+    except (KeyError, TypeError, AttributeError, ValueError):
         return False
 
 
 def _subject(subject):
-    if subject not in PUBLIC_SUBJECTS:
+    if not isinstance(subject, str) or subject not in PUBLIC_SUBJECTS:
         raise ValueError("No bundled dataset for this subject. Upload subject training records in the app.")
 
 
 def _active_directory(subject, artifact_dir):
+    _subject(subject)
     pointer = Path(artifact_dir) / subject / "latest.json"
-    identifier = json.loads(pointer.read_text(encoding="utf-8"))["bundle_id"]
-    if not isinstance(identifier, str) or len(identifier) != 32 or any(c not in "0123456789abcdef" for c in identifier):
-        raise ValueError("Invalid bundle identity.")
-    return pointer.parent / identifier
+    if not pointer.resolve().is_relative_to(Path(artifact_dir).resolve()):
+        raise ValueError("Artifact pointer must stay inside the artifact directory.")
+    return _bundle_directory(artifact_dir, subject, _read_json(pointer)["bundle_id"])
 
 
 def bundle_signature(subject, artifact_dir=ARTIFACT_DIR, data_dir=ROOT / "data"):
@@ -81,7 +124,9 @@ def bundle_signature(subject, artifact_dir=ARTIFACT_DIR, data_dir=ROOT / "data")
 def save_bundle(bundle, artifact_dir=ARTIFACT_DIR):
     """Write an immutable run, then atomically publish its pointer after all files exist."""
     fitted, metrics, results = bundle
-    directory = Path(artifact_dir) / metrics["subject"] / metrics["bundle_id"]
+    directory = _bundle_directory(artifact_dir, metrics["subject"], metrics["bundle_id"])
+    if not session_bundle_compatible(bundle):
+        raise ValueError("Cannot save an incompatible predictor bundle.")
     directory.mkdir(parents=True, exist_ok=False)
     joblib.dump(fitted, directory / "model.joblib")
     (directory / "metrics.json").write_text(json.dumps(metrics, indent=2, allow_nan=False), encoding="utf-8")
@@ -97,13 +142,18 @@ def save_bundle(bundle, artifact_dir=ARTIFACT_DIR):
 
 
 def _load_verified(subject, directory, data, fingerprint):
-    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    for name, limit in (("manifest.json", 1024 * 1024), ("metrics.json", 1024 * 1024),
+                        ("test_predictions.csv", 4 * 1024 * 1024), ("model.joblib", 64 * 1024 * 1024)):
+        path = directory / name
+        if not path.resolve().is_relative_to(directory.resolve()) or path.stat().st_size > limit:
+            raise ValueError("Artifact file is outside its run directory or exceeds its size limit.")
+    manifest = _read_json(directory / "manifest.json")
     if manifest["schema_version"] != SCHEMA_VERSION or manifest["bundle_id"] != directory.name:
         raise ValueError("Incompatible artifact manifest.")
     for name in ("model.joblib", "metrics.json", "test_predictions.csv"):
         if file_hash(directory / name) != manifest["files"][name]:
             raise ValueError(f"Artifact integrity mismatch: {name}.")
-    metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+    metrics = _read_json(directory / "metrics.json")
     if (metrics["schema_version"] != SCHEMA_VERSION or metrics["code_sha256"] != code_fingerprint()
             or metrics["dataset_sha256"] != fingerprint or metrics["subject"] != subject
             or metrics["sklearn_version"] != sklearn.__version__ or metrics["bundle_id"] != directory.name

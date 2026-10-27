@@ -1,11 +1,11 @@
 """Subject-specific training from validated history, kept only in the staff session."""
 
 import hashlib
-from io import BytesIO
 
 import pandas as pd
 
-from cohort import MAX_ROWS, export_csv, read_cohort_csv
+from cohort import export_csv, parse_csv, validate_cohort
+from validation import safe_text
 from model import FEATURES, FEATURE_SETS, PUBLIC_SUBJECTS, SUBJECTS, train_and_evaluate
 from model_service import finalize_bundle, session_bundle_compatible
 
@@ -16,14 +16,12 @@ def training_template(training_feature_set="expanded_v1"):
 
 
 def read_training_csv(content, subject, training_feature_set="expanded_v1"):
-    if subject not in SUBJECTS or subject in PUBLIC_SUBJECTS:
+    if not isinstance(subject, str) or subject not in SUBJECTS or subject in PUBLIC_SUBJECTS:
         raise ValueError("Select one of the subjects that requires uploaded training records.")
-    if training_feature_set not in FEATURE_SETS:
+    if not isinstance(training_feature_set, str) or training_feature_set not in FEATURE_SETS:
         raise ValueError("Unknown training feature set.")
-    cohort = read_cohort_csv(content, FEATURE_SETS[training_feature_set])
-    # The same bounded parser has already checked encoding, size and required inputs.
-    raw = pd.read_csv(BytesIO(content), sep=None, engine="python", encoding="utf-8-sig",
-                      dtype="string", nrows=MAX_ROWS + 1)
+    raw = parse_csv(content)
+    cohort = validate_cohort(raw, FEATURE_SETS[training_feature_set])
     if "subject" not in raw:
         raise ValueError(f"Add a subject column containing {subject} or {SUBJECTS[subject]} on every row.")
     labels = raw.subject.str.strip().str.casefold()
@@ -39,6 +37,7 @@ def read_training_csv(content, subject, training_feature_set="expanded_v1"):
 
 
 def train_subject(content, subject, training_feature_set="expanded_v1", source="Staff-provided historical records"):
+    source = safe_text(source, field="Training data source", maximum=200)
     history = read_training_csv(content, subject, training_feature_set)
     training = history[FEATURE_SETS[training_feature_set]].assign(G3=history.actual_grade.astype(int))
     bundle = finalize_bundle(*train_and_evaluate(training, training_feature_set=training_feature_set),
@@ -64,6 +63,9 @@ def render_subject_training(subject):
                                                        "expanded_v1": "Expanded: compare all six candidates",
                                                        "persistence_v1": "G2 only: compare persistence and mean baselines"}[value],
                             key=f"training_mode_{subject}")
+        if mode not in FEATURE_SETS:
+            st.error("Select a supported training input set.")
+            return None
         source = st.text_input("Training data source", value="Staff-provided historical records", max_chars=200,
                                key=f"training_source_{subject}")
         st.download_button("Download training CSV template", training_template(mode),

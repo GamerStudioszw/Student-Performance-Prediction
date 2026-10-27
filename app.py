@@ -20,6 +20,9 @@ st.caption("STAFF WORKSPACE · STUDENT ANALYTICS")
 st.title("Student Performance Analytics")
 st.write("Review class progress, compare groups, and plan student support.")
 subject = st.sidebar.selectbox("Subject", list(SUBJECTS), format_func=SUBJECTS.get, key="subject")
+if subject not in SUBJECTS:
+    st.error("Select a supported subject.")
+    st.stop()
 
 
 @st.cache_resource(show_spinner=False)

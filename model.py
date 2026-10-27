@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from validation import finite_number
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyRegressor
@@ -48,8 +49,10 @@ BOUND_POLICY = "Raw predictions and intervals; no clipping during calibration, e
 
 
 def validate_frame(frame, *, require_target=False, features=None):
+    if not isinstance(frame, pd.DataFrame) or not frame.columns.is_unique:
+        raise ValueError("Provide a table with unique column names.")
     features = FEATURES if features is None else list(features)
-    if len(features) != len(set(features)) or not set(features).issubset(FEATURES):
+    if not features or len(features) != len(set(features)) or not set(features).issubset(FEATURES):
         raise ValueError("Unknown or duplicate predictor fields. Outcomes and metadata cannot be predictors.")
     required = features + ([TARGET] if require_target else [])
     missing = sorted(set(required) - set(frame.columns))
@@ -66,6 +69,8 @@ def validate_frame(frame, *, require_target=False, features=None):
             clean[column] = values.astype(str)
         else:
             low, high = (0, 20) if column == TARGET else RANGES[column]
+            if clean[column].map(lambda value: isinstance(value, (bool, np.bool_, complex))).any():
+                raise ValueError(f"{column} must contain whole-number grades or codes, not booleans or complex values.")
             values = pd.to_numeric(clean[column], errors="coerce")
             if not (values.notna() & np.isfinite(values) & values.between(low, high) & (values % 1 == 0)).all():
                 raise ValueError(f"{column} must contain whole numbers from {low} to {high}; missing values are not replaced.")
@@ -233,19 +238,25 @@ def train_and_evaluate(frame, *, training_feature_set="expanded_v1"):
 
 def predict_grade(fitted, frame):
     features = getattr(fitted, "input_features_", FEATURES)
-    return fitted.predict(validate_frame(frame, features=features))
+    clean = validate_frame(frame, features=features)
+    try:
+        predictions = np.asarray(fitted.predict(clean), dtype=float)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("The predictor returned invalid results. Reload or retrain the model.") from exc
+    if predictions.shape != (len(clean),) or not np.isfinite(predictions).all():
+        raise ValueError("The predictor returned invalid results. Reload or retrain the model.")
+    return predictions
 
 
 def prediction_report(fitted, frame, metrics, threshold=10):
-    if not np.isfinite(threshold) or not 0 <= threshold <= 20:
-        raise ValueError("Reference threshold must be between zero and twenty.")
+    threshold = finite_number(threshold, field="Reference threshold", minimum=0, maximum=20)
     if "bundle_id" in metrics and getattr(fitted, "bundle_id_", None) != metrics["bundle_id"]:
         raise ValueError("Predictor and evaluation bundle do not match.")
     features = getattr(fitted, "input_features_", FEATURES)
     clean = validate_frame(frame, features=features)
     grades = predict_grade(fitted, clean)
     report = observed_grades(frame, clean).reset_index(drop=True)
-    radius = metrics["interval"]["radius"]
+    radius = finite_number(metrics["interval"]["radius"], field="Prediction range radius", minimum=0, maximum=np.finfo(float).max)
     report["predicted_grade"] = grades
     report["percentage_equivalent"] = grades * 5
     report["observed_change_G1_to_G2"] = report.G2 - report.G1
@@ -254,6 +265,10 @@ def prediction_report(fitted, frame, metrics, threshold=10):
     report["margin_to_threshold"] = grades - threshold
     report["interval_lower"] = grades - radius
     report["interval_upper"] = grades + radius
+    numeric_results = ["predicted_grade", "percentage_equivalent", "predicted_change_from_G2",
+                       "margin_to_threshold", "interval_lower", "interval_upper"]
+    if not np.isfinite(report[numeric_results].to_numpy(dtype=float)).all():
+        raise ValueError("The predictor returned an invalid report. Reload or retrain the model.")
     report["threshold_comparison"] = np.where(grades >= threshold, "At or above reference", "Below reference")
     for name in ("bundle_id", "feature_set", "schema_version", "prediction_timing", "predictor_kind"):
         if name in metrics:
@@ -263,8 +278,7 @@ def prediction_report(fitted, frame, metrics, threshold=10):
 
 def alert_evaluation(actual, predicted, threshold):
     """Positive = recorded G3 < reference; alert = raw predicted G3 < same reference."""
-    if not np.isfinite(threshold) or not 0 <= threshold <= 20:
-        raise ValueError("Reference threshold must be between zero and twenty.")
+    threshold = finite_number(threshold, field="Reference threshold", minimum=0, maximum=20)
     actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
     if actual.ndim != 1 or actual.shape != predicted.shape:
         raise ValueError("Actual and predicted outcomes must be equally sized vectors.")

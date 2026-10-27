@@ -72,6 +72,24 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(context.exception.code, 400)
         context.exception.close()
 
+    def test_rebinding_cross_origin_and_malformed_json_are_rejected(self):
+        attempts = [
+            (b'{}', {'Content-Type': 'application/json', 'Origin': 'https://evil.example'}, 403),
+            (b'{}', {'Content-Type': 'application/json', 'Host': 'evil.example'}, 403),
+            (b'{}', {'Content-Type': 'text/plain'}, 400),
+            (b'{"G1":10,"G1":20}', {'Content-Type': 'application/json'}, 400),
+            (b'[' * 2000, {'Content-Type': 'application/json'}, 400),
+            (b'x' * 8193, {'Content-Type': 'application/json'}, 400),
+        ]
+        for body, headers, status in attempts:
+            with self.subTest(headers=headers, length=len(body)):
+                request = Request(self.base + '/api/predict', data=body, headers=headers)
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(request, timeout=5)
+                self.assertEqual(caught.exception.code, status)
+                self.assertEqual(caught.exception.headers.get('Cache-Control'), 'no-store')
+                caught.exception.close()
+
 
 if __name__ == '__main__':
     unittest.main()

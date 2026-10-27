@@ -64,7 +64,11 @@ def render_dashboard(model, metrics, subject, *, history=None):
     with controls[1]:
         threshold = st.number_input("Review reference grade", min_value=0, max_value=20, value=10, key="cohort_threshold",
                                     help="A staff-selected threshold for review, not an official pass rule or a probability.")
-    report = analyse_cohort(model, cohort, metrics, threshold)
+    try:
+        report = analyse_cohort(model, cohort, metrics, threshold)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     report["data_source"] = source
     report = filter_cohort(report, groups, STATUSES)
     if report.empty:

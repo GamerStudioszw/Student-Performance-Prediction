@@ -21,7 +21,10 @@ def prepare_drive_workspace(drive_root):
 
 
 def read_drive_cohort(workspace, filename, features):
-    directory = (Path(workspace) / "datasets").resolve()
+    root = Path(workspace).resolve()
+    directory = (root / "datasets").resolve()
+    if not directory.is_relative_to(root):
+        raise ValueError("Dataset folder must stay inside StudentInsight.")
     path = (directory / filename).resolve()
     if not path.is_relative_to(directory) or path.suffix.lower() != ".csv":
         raise ValueError("Choose a CSV inside StudentInsight/datasets.")
@@ -29,7 +32,8 @@ def read_drive_cohort(workspace, filename, features):
         raise ValueError(f"Dataset not found: {path.name}. Add it to StudentInsight/datasets first.")
     if path.stat().st_size > MAX_BYTES:
         raise ValueError("Use a CSV file smaller than 2 MB.")
-    return read_cohort_csv(path.read_bytes(), features)
+    with path.open("rb") as stream:
+        return read_cohort_csv(stream.read(MAX_BYTES + 1), features)
 
 
 def save_drive_archive(archive, workspace):
