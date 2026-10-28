@@ -1,5 +1,7 @@
 # Additional training datasets for StudentInsight
 
+**28 October 2026 update:** the default app now integrates [Kaggle xAPI-Edu-Data version 6](https://www.kaggle.com/datasets/aljarah/xAPI-Edu-Data), a 480-record academic-band classification dataset with 12 topics. Its original CSV, CC BY-SA 4.0 attribution and checksum are in `data/kaggle/`; measured results are in `artifacts/kaggle/`. The sources below remain separate research candidates and are not included in that classifier. The UCI grade models remain a reference workflow.
+
 Reviewed on 27 October 2026. This catalog records dataset discovery and file inspection. It does not report new trained models or improved prediction accuracy.
 
 ## Recommended sources

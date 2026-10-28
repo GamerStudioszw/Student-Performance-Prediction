@@ -1,0 +1,421 @@
+[
+  {
+    "title": "Abstract and report guide",
+    "sections": [],
+    "paragraphs": [
+      "StudentInsight is a staff-facing analytics system for teachers, lecturers, heads of department, principals and headmasters. Its default workflow now uses Kaggle xAPI-Edu-Data to estimate Low, Middle or High academic performance bands from recorded learning activity and educational context. It combines class charts, student review tables, name-or-ID uploads, individual predictions and CSV exports. The earlier UCI grade-regression workflow remains available as a clearly labelled reference.",
+      "The Kaggle source contains 480 historical records across 12 topics. After removing six duplicate rows in the selected input-and-outcome representation, 474 rows remain. Identical predictor groups stay within a partition. A fixed split yields 378 development rows and 96 test rows. Five-fold grouped validation compares a most-frequent baseline, logistic regression and random forest. Logistic regression achieves the highest validation macro F1, 0.707. Test accuracy is 76.0%, macro F1 is 0.776 and balanced accuracy is 77.7%.",
+      "These are retrospective internal results. The source lacks student identifiers and verified measurement cutoff dates, so repeated-student overlap and prospective leakage cannot be excluded. The result is a working demonstration, not evidence of institutional readiness or improved attainment. All 92 automated tests passed on 28 October 2026. The complete notebook executed locally, and real application screenshots were captured with a temporary demonstration account."
+    ],
+    "table": {
+      "headers": [
+        "Chapter",
+        "Milestone",
+        "Content"
+      ],
+      "rows": [
+        [
+          "1",
+          "M1 Proposal  Week 4",
+          "Problem, objectives, methodology, roles and literature"
+        ],
+        [
+          "2",
+          "M2 Design  Week 7",
+          "Architecture, pipeline, algorithms and ethics"
+        ],
+        [
+          "3",
+          "M3 Prototype  Week 10",
+          "Implementation, training and evaluation"
+        ],
+        [
+          "4",
+          "M4 Integration  Week 13",
+          "Integration, tests, documentation and repository"
+        ],
+        [
+          "5",
+          "M5 Final  Week 15",
+          "Final package, conclusions, slides and demo"
+        ]
+      ]
+    },
+    "after": "Application baseline: 5af3632. The supplied weeks are planned assessment points, not claims of completed submissions. This edition includes the cover and references within the 20-page technical-report limit."
+  },
+  {
+    "title": "Chapter 1 Proposal",
+    "sections": [
+      {
+        "heading": "1 1 Background and problem statement",
+        "text": "Educators need a consistent way to review groups of learners, locate records and compare learning activity with model estimates. StudentInsight addresses this workflow through an authenticated interface, class summaries, individual analysis and transparent model-quality reporting. It supports staff judgement rather than automatic promotion, admission or discipline. No university needs survey or intervention trial has been completed.\nThe earlier application offered final-grade estimates for two UCI subjects. The requested extension is a Kaggle-based workflow with more recorded subjects and engagement measures. The selected Kaggle dataset provides categorical outcomes rather than exact marks. A valid implementation must therefore change the prediction task, input schema, evaluation and displays instead of renaming existing grades or fabricating labels."
+      },
+      {
+        "heading": "1 2 Aim and objectives",
+        "text": "The aim is to implement and evaluate a reproducible, staff-facing academic-performance classification workflow using a documented Kaggle education dataset."
+      }
+    ],
+    "bullets": [
+      "Validate learning-activity counts, educational categories and student labels before prediction.",
+      "Compare a simple baseline with logistic regression and random forest using the same development folds.",
+      "Keep identical input groups out of opposing partitions and report classification metrics on reserved test records.",
+      "Provide class charts, review tables, individual predictions, search and safe CSV exports.",
+      "Reuse model code through Jupyter and Google Colab, with optional Drive storage and Git version tracking.",
+      "Document provenance, limitations, ethics and evidence needed for local deployment."
+    ],
+    "after": "Research questions ask which candidate has the strongest validation macro F1, how it performs across the three outcome bands, and whether staff can inspect and export consistent predictions."
+  },
+  {
+    "title": "Proposal scope and methodology",
+    "sections": [
+      {
+        "heading": "1 3 Scope",
+        "text": "The default Kaggle workflow includes Arabic, Biology, Chemistry, English, French, Geology, History, Information Technology, Mathematics, Quran, Science and Spanish. These are the actual topic labels in the dataset. It has no Portuguese, Physics or Geography records. Science is not relabelled Physics, and Geology is not relabelled Geography. One pooled model uses Topic as a feature; the system does not claim 12 independently validated subject models.\nAdditional staff accounts can register. Names, IDs and class labels support reports but never enter the model. Private uploads remain in the signed-in session. Role-based permissions, email recovery, permanent student histories and audited interventions remain future work. The UCI reference retains Mathematics and Portuguese grade estimates with separate metrics."
+      },
+      {
+        "heading": "1 4 Methodology",
+        "text": "Development combines iterative software engineering with a fixed predictive comparison. Preserve the original Kaggle CSV, validate selected fields, remove exact duplicate model rows, and group identical input vectors. Hold out 20% of groups using seed 42. Compare candidates using grouped stratified five-fold validation only within development data. Fit preprocessing independently within each fold. Refit the selected pipeline on all development rows and evaluate the untouched holdout.\nThe highest validation macro F1 wins; candidate order resolves exact ties. Neither the observed test result nor a preferred model type changes the selection. Counts are scaled for the pipeline and categories receive one-hot encoding. Outcomes and names are excluded from predictors. No missing inputs or outcome labels are invented."
+      },
+      {
+        "heading": "1 5 Acceptance criteria",
+        "text": "The app must default to the Kaggle workflow, show only source-supported subjects, reject invalid input, support names or IDs, produce one-student and class reports, and preserve a separate UCI reference route. The repository must include reproducible training, the notebook, data attribution, test evidence and documentation. Predictive quality must be reported with its limits rather than a promise of future accuracy."
+      }
+    ]
+  },
+  {
+    "title": "Initial literature review and team roles",
+    "sections": [
+      {
+        "heading": "1 6 Related work",
+        "text": "Romero and Ventura [2] frame educational data mining as the analysis of educational processes and learner data. This motivates staff-facing analytics, but does not establish that this application improves learning outcomes. Evaluation here concerns software behavior and retrospective prediction.\nThe Kaggle dataset card [12], attributed to Elaf Abu Amrieh, Thair Hamtini and Ibrahim Aljarah, describes records collected from the Kalboard 360 learning management system using xAPI activity tracking. It supplies three academic outcome bands, activity counts and educational context. This provenance supports an academic-band classification task; it does not supply exact exam marks or a verified early-warning cutoff.\nPedregosa et al. [3] describe the scikit-learn framework used for consistent preprocessing and estimator pipelines. Leakage guidance [4] motivates fitting transformations within validation folds. The grouped split additionally prevents identical input vectors from crossing partitions, while acknowledging that absent student IDs prevent full identity-based separation.\nThe earlier UCI source [1] remains a reference for final-grade regression. Its G1, G2 and G3 timing and 0–20 grades differ from Kaggle band labels. Its split-conformal intervals [5] are not transferred to the new classifier.\nThe project contribution is the integration of documented data, a fair candidate comparison, clear staff outputs and verification. It does not propose a new machine-learning algorithm."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Role",
+        "Responsibility",
+        "Member"
+      ],
+      "rows": [
+        [
+          "Coordinator",
+          "Scope, schedule, report and demonstration",
+          "To complete"
+        ],
+        [
+          "Data and modelling",
+          "Provenance, schemas, comparison and calibration",
+          "To complete"
+        ],
+        [
+          "Application",
+          "Authentication, interface and class analytics",
+          "To complete"
+        ],
+        [
+          "Testing and documentation",
+          "Checks, evidence, installation and slides",
+          "To complete"
+        ]
+      ]
+    },
+    "after": "These are proposed responsibility areas. Members may combine roles. The group must enter names, student numbers and actual contributions; no individual contribution or supervisory approval is asserted."
+  },
+  {
+    "title": "Chapter 2 Design",
+    "sections": [
+      {
+        "heading": "2 1 Architecture",
+        "text": "The design separates staff interaction, validation, modelling, persistence and outputs. Streamlit hosts the authenticated workspace. Validation and prediction remain ordinary Python modules, allowing the interface, notebook and tests to call the same implementation. This reduces the risk of different interfaces presenting inconsistent forecasts."
+      }
+    ],
+    "figure": "architecture.png",
+    "caption": "Figure 1  Implemented components and data flow. Notebook access does not synchronize the Streamlit account database.",
+    "after": "After sign-in, the dataset selector defaults to Kaggle academic performance. Its four tabs are Class dashboard, Single-student prediction, Model quality and Data guide. A pooled public classifier is cached using source-data and model-code hashes. Private uploads remain separate from the shared cache and do not retrain it.\nThe independent UCI reference route keeps its existing model, schema and evaluation. SQLite stores staff password hashes and session-token hashes. The app account database is separate from notebook storage and is excluded from source backups. A local account is not automatically synchronized to a hosted installation or Google account."
+  },
+  {
+    "title": "Kaggle data pipeline and schema",
+    "sections": [
+      {
+        "heading": "2 2 Source and target",
+        "text": "The pinned source is Kaggle xAPI-Edu-Data version 6 [12], licensed CC BY-SA 4.0. The repository preserves the 480-row, 17-column CSV and records its SHA-256 hash, version, attribution and source description. download_kaggle.py retrieves that version, reads only the expected CSV member, applies size limits and rejects a hash mismatch before replacing data.\nClass is the target: L denotes Low (0–69), M denotes Middle (70–89), and H denotes High (90–100), using the source definitions. Exact marks are absent. These bands are not the university’s official pass rules."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Input group",
+        "Fields",
+        "Validation"
+      ],
+      "rows": [
+        [
+          "Learning activity",
+          "raisedhands, VisITedResources, AnnouncementsView, Discussion",
+          "Whole-number counts 0–100"
+        ],
+        [
+          "Educational context",
+          "StageID, GradeID, Topic, Semester",
+          "Explicit source categories"
+        ],
+        [
+          "Attendance",
+          "StudentAbsenceDays",
+          "Under-7 or Above-7"
+        ],
+        [
+          "Report labels",
+          "student_name or student_id; class_name",
+          "Validated text; excluded from fitting"
+        ]
+      ]
+    },
+    "after": "The nine predictors exclude gender, nationality, birthplace, section and parent variables. Names and outcomes never enter preprocessing. The source has inconsistent-looking stage/grade combinations, including G-07 in more than one stage; observed categories are retained and documented rather than silently corrected. The meaning of exactly seven absence days is not defined by the source, so it must not be guessed.\nSix rows duplicate an existing selected-input-and-outcome row, leaving 474 distinct model rows. This is not a count of unique students. Identical selected-input groups stay together in the holdout and validation partitions. The source has no reliable person identifier with which to rule out every repeated-student overlap."
+  },
+  {
+    "title": "Model selection and ethical design",
+    "sections": [
+      {
+        "heading": "2 3 Candidate algorithms",
+        "text": "The most-frequent baseline predicts the common training class and establishes a minimum comparison. Logistic regression uses C = 1 and at most 2,000 iterations. The random forest uses 250 trees, depth at most 10, minimum leaf size 3, balanced class weights and seed 42. These fixed settings are evaluated on the same grouped stratified folds.\nA pipeline standardizes four numeric activity counts and one-hot encodes five categorical inputs. Transformations are fitted only on each fold’s training rows [3, 4]. Macro F1 is the selection metric because it gives equal weight to Low, Middle and High, rather than allowing the largest band to dominate. Fold standard deviation describes variation between folds, not an uncertainty interval for a student."
+      },
+      {
+        "heading": "2 4 Output interpretation",
+        "text": "The classifier returns a performance band, not an exact grade. The interface does not present raw class probabilities as calibrated confidence or passing probabilities. A Low estimate should prompt review of the learner’s circumstances, not an automatic adverse action. Changes to an input do not establish that an intervention causes an outcome change."
+      },
+      {
+        "heading": "2 5 Ethical analysis",
+        "text": "Use only authorized records and the identifiers needed for the task. Staff may use IDs instead of names. Uploads are session-only, and CSV exports neutralize formula-like text. Excluding demographic fields reduces direct use of those attributes but does not establish fairness or eliminate proxies.\nInstitutional deployment requires access and retention policies, role-based permissions, recovery, audit trails, and local validation. The dataset lacks verified measurement cutoff dates; activity may have been observed over the same period as outcomes. Do not market this result as validated early warning. Some subjects have few records, and the pooled evaluation does not establish reliability for each subject.\nThe dataset license and attribution accompany redistribution. Google Drive access is optional and requires authorization. A saved project snapshot does not automatically grant another person access."
+      }
+    ]
+  },
+  {
+    "title": "Chapter 3 Prototype",
+    "sections": [
+      {
+        "heading": "3 1 Implemented components",
+        "text": "kaggle_model.py validates the schema, builds grouped partitions, compares classifiers and generates predictions and metrics. kaggle_cohort.py validates names, IDs and class uploads, retaining recorded outcomes only as report fields. kaggle_ui.py renders charts, review tables, individual analysis and model quality. app.py selects the Kaggle workspace by default and keeps the UCI route separate.\ntrain.py now trains Kaggle by default. Use --dataset uci for the reference grade models, or --dataset all for both. The app can prepare its public classifier in memory from the bundled Kaggle CSV; no Kaggle account or runtime download is required for normal use."
+      },
+      {
+        "heading": "3 2 Validation comparison",
+        "text": "The table reports grouped five-fold development scores. Logistic regression wins by mean macro F1 and is refitted on the 378 development records. Model choice is completed before the 96 test records are evaluated."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Candidate",
+        "CV macro F1",
+        "Fold SD"
+      ],
+      "rows": [
+        [
+          "Most frequent baseline",
+          "0.207",
+          "0.001"
+        ],
+        [
+          "Logistic regression",
+          "0.707",
+          "0.055"
+        ],
+        [
+          "Random forest",
+          "0.694",
+          "0.063"
+        ]
+      ]
+    },
+    "after": "The most-frequent baseline scores 0.207 macro F1. Logistic regression scores 0.707 and the random forest 0.694. This comparison justifies the selected classifier for this fixed internal protocol; it does not show that logistic regression is universally superior. Subject filtering changes the displayed records, not the fitted model."
+  },
+  {
+    "title": "Prototype code excerpts",
+    "paragraphs": [
+      "These images reproduce actual source excerpts from application baseline 5af3632. File names and source line numbers connect the report to the implementation. They are excerpts, not complete standalone programs."
+    ],
+    "figures": [
+      {
+        "file": "07-account-validation.png",
+        "caption": "Figure 2  auth.py lines 103 to 115 validate account inputs before registration.",
+        "width": 6.7
+      },
+      {
+        "file": "08-kaggle-training.png",
+        "caption": "Figure 3  kaggle_model.py lines 85 to 96 compare candidates using grouped validation, fit the selected pipeline and predict the reserved test set.",
+        "width": 6.7
+      }
+    ],
+    "after": "Preprocessing is part of the pipeline passed to cross_val_score, so it is fitted inside each validation fold. Selection uses validation macro F1. The report’s numerical results come from artifacts/kaggle/metrics.json, not from the screenshots or illustrative profile."
+  },
+  {
+    "title": "Measured results and limitations",
+    "sections": [
+      {
+        "heading": "3 3 Held out evaluation",
+        "text": "On 96 reserved records, accuracy is 76.0%, macro F1 is 0.776, and balanced accuracy is 77.7%. Accuracy is the fraction of correctly predicted bands. Macro F1 averages the three class F1 scores equally; balanced accuracy averages recall across classes. These are dataset-level metrics, not individual guarantees.\nThe confusion matrix below uses recorded classes as rows and predicted classes as columns. Its diagonal totals 73 correct predictions out of 96."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Recorded band",
+        "Predicted Low",
+        "Predicted Middle",
+        "Predicted High"
+      ],
+      "rows": [
+        [
+          "Low",
+          20,
+          2,
+          0
+        ],
+        [
+          "Middle",
+          3,
+          31,
+          6
+        ],
+        [
+          "High",
+          0,
+          12,
+          22
+        ]
+      ]
+    },
+    "after": "The test contains 22 Low, 40 Middle and 34 High records. Twenty Low records are correctly identified, while two are estimated Middle. Twelve High records are estimated Middle. The pattern matters for review workload: staff must inspect possible false alerts and missed distinctions instead of treating the band as a definitive label.\nThe raw dataset has 12 subjects, ranging from 19 History records to 95 IT records. The test is pooled across subjects; it does not validate each subject separately. No student identifier or time-based split is available, and repeated-student or timing-related leakage cannot be fully excluded. Later-cohort and local-school evaluation remain necessary.\nThe UCI reference has a different target, scale, population and splitting procedure. Its MAE and interval coverage cannot be compared numerically with Kaggle classification accuracy as evidence of improvement. The new dataset adds recorded subject coverage and activity measures; it does not automatically make the model more reliable."
+  },
+  {
+    "title": "Chapter 4 Integration",
+    "sections": [
+      {
+        "heading": "4 1 Staff accounts and integration",
+        "text": "Staff can choose Sign up from the sign-in page, register a unique username, and return to sign-in after registration. Additional registrations remain available. Passwords are 15 to 128 characters and use salted PBKDF2-HMAC-SHA256 with 600,000 iterations. Session tokens are hashed, expire after eight hours, and are revoked on sign-out. Login and registration throttling limit repeated attempts. These controls do not provide institutional roles, email verification or password recovery.\nThe default route prepares a Kaggle classifier from the bundled CSV, with a cache keyed by dataset and model-code hashes. The UCI reference separately verifies and prepares grade-regression bundles. Class uploads do not train either public model. Screenshots were captured locally on 28 October 2026 using a temporary demonstration account database."
+      },
+      {
+        "heading": "4 2 Git and GitHub workflow",
+        "text": "Git records local revisions; GitHub hosts the shared repository [10, 11]. The application baseline inspected for this edition is commit 5af3632. Clone the repository, create the virtual environment, install requirements and run the tests before launching the app. README.md contains copyable commands and the notebook link.\nUse git status and git diff before committing. Stage only intended source or documentation files, commit with a descriptive message, then push to origin main when authorized. Pull shared changes with git pull --ff-only before starting work; resolve divergence deliberately instead of force-pushing. Record git rev-parse HEAD with an experiment so its results can be traced to code."
+      },
+      {
+        "heading": "4 3 Reproducible project handover",
+        "text": "project_backup.py exports committed HEAD using git archive, a clean notebook, SHA-256 hashes and a manifest. Tracked changes must be committed first. The snapshot includes tracked public datasets, tests and documentation, but excludes ignored account databases, credentials, environments, private uploads and untracked research files. Recreate dependencies from requirements files. Git history is not included in the ZIP. A source-code backup is distinct from a full operational database backup."
+      }
+    ]
+  },
+  {
+    "title": "Google Colab Jupyter and Drive",
+    "sections": [
+      {
+        "heading": "4 4 Notebook execution and storage",
+        "text": "notebooks/StudentInsight.ipynb imports the same modules as the app. It trains the default Kaggle classifier, compares candidates, plots predicted bands, displays a confusion matrix and produces individual or optional class reports. A separately labelled UCI reference section retains the grade-regression experiments. Exports include Kaggle metrics, held-out predictions and the individual example.\nGoogle Colab is a hosted notebook service [8]. Open the Colab link in README.md, connect a Python runtime and run cells in order. Setup clones main if the project directory is absent and installs requirements into that kernel. Existing clones are reused without automatically pulling changes. Record the printed Git revision and save outputs because hosted runtime files are temporary.\nFor local Jupyter [7], run .\\run-notebook.ps1 from the project folder and select StudentInsight (.venv). Use .\\run-notebook.ps1 -Lab for JupyterLab. The launcher installs notebook dependencies and registers the kernel. Local files remain on the computer unless explicitly copied or synchronized."
+      }
+    ],
+    "figures": [
+      {
+        "file": "09-notebook-drive.png",
+        "caption": "Figure 4  Actual Drive connection code from notebook cell 6, source lines 3 to 13. Colab requests authorization; local Jupyter can use an existing synced folder.",
+        "width": 6.7
+      }
+    ],
+    "after": "In Colab, USE_GOOGLE_DRIVE defaults to IN_COLAB; set it False to skip authorization. Section 1b saves the committed project and clean notebook under StudentInsight/projects. Kaggle and UCI class inputs use distinct schemas. Optional class inputs come from StudentInsight/datasets, and report ZIPs go to StudentInsight/reports with copy verification and no overwriting. Local Jupyter uses LOCAL_DRIVE_FOLDER only when configured.\nA saved ZIP does not grant access. Share the intended Drive folder or notebook with czano@buse.ac.zw as Viewer and verify the permission list. This report does not claim that his access or Google-hosted execution has been verified."
+  },
+  {
+    "title": "Account navigation snapshots",
+    "paragraphs": [
+      "The local browser check used a temporary demonstration database. Both navigation routes are visible: existing staff sign in, and new staff select Sign up. Creating another account does not remove this option."
+    ],
+    "paired_figures": [
+      "01-sign-in.png",
+      "02-sign-up.png"
+    ],
+    "pair_caption": "Figure 5  Actual sign-in and sign-up screens captured on 28 October 2026. Forms are shown empty; no password or real staff identity is included.",
+    "after": "Registration validates the submitted name, normalized username and passphrase. After successful creation, the app returns to sign-in with a confirmation. Successful sign-in opens the staff workspace. The local demonstration also verified that sign-up remains accessible after an account already exists.\nThese are account records for this installation, not Google or university single sign-on. A separate hosted copy needs its own account storage. Deployment planning must provide persistent storage and appropriate access controls."
+  },
+  {
+    "title": "Class analytics snapshot",
+    "sections": [],
+    "paragraphs": [
+      "The default Class dashboard shows the historical Kaggle holdout. These 96 records come from the source dataset, not the user’s institution. Row numbers are labelled as source rows rather than invented student identities."
+    ],
+    "figures": [
+      {
+        "file": "kaggle-dashboard.png",
+        "caption": "Figure 6  Actual Kaggle dashboard with 23 Low, 45 Middle and 28 High estimates, activity charts and group comparisons. Captured on 28 October 2026.",
+        "width": 6.7
+      }
+    ],
+    "after": "The classifier estimates 23 Low bands, while the recorded holdout contains 22 Low outcomes; these are different quantities. The chart describes predicted categories. Education-stage and grade labels form example groups, not verified local classes. Subject and group filters affect charts and tables; name and band filters affect the student review table and its export. Names and IDs supplied by staff remain report labels."
+  },
+  {
+    "title": "Single student prediction snapshot",
+    "sections": [],
+    "paragraphs": [
+      "A teacher can submit one profile without uploading a class file. The demonstration uses an illustrative student label and activity counts. The selected education stage, grade, topic, semester and absence band are shown in the form. None of these illustrative inputs is used as evidence of predictive accuracy."
+    ],
+    "figures": [
+      {
+        "file": "kaggle-single.png",
+        "caption": "Figure 7  Actual single-student workflow and model-generated performance band. The result describes the last submitted profile and can be downloaded as CSV.",
+        "width": 6.7
+      }
+    ],
+    "after": "All nine model fields are required. Zero counts mean observed zero activity, not missing data. The stage and grade must match a combination recorded in the dataset. Optional name, ID and class fields label the output but do not influence the classifier. Staff should review uncertain circumstances and avoid converting a category into an invented exact mark."
+  },
+  {
+    "title": "Model quality snapshot",
+    "sections": [],
+    "paragraphs": [
+      "The Model quality tab displays pooled validation and test evidence. Changing the sidebar subject does not turn these results into subject-specific validation. The source and input guide document all available topics and their record counts."
+    ],
+    "figures": [
+      {
+        "file": "kaggle-quality.png",
+        "caption": "Figure 8  Actual Kaggle Model quality screen showing candidate comparison, test metrics, confusion matrix and limitations.",
+        "width": 6.7
+      }
+    ],
+    "after": "The test accuracy is 76.0%, not a guarantee for the next student. Macro F1 is 0.776 and balanced accuracy 77.7%. The metrics file retains the selected feature schema, fold scores, source row partitions, model-code hash and scikit-learn version. Preserve that evidence with the Git revision when presenting or repeating the experiment."
+  },
+  {
+    "title": "Testing and operating documentation",
+    "sections": [
+      {
+        "heading": "4 5 Automated and browser verification",
+        "text": "All 92 automated tests passed on 28 October 2026. The five added Kaggle tests cover dataset fingerprints and supported topics, identical-input separation, validation-only model selection, strict input validation, names and IDs, safe exports, the default app route, individual prediction and switching to the UCI reference. Existing authentication, UCI modelling, class analytics, storage and backup tests remain in the suite. This is functional verification, not a penetration test."
+      }
+    ],
+    "dynamic": "tests",
+    "after": "The entire updated notebook executed locally with Drive disabled on 28 October 2026, including Kaggle and UCI training and ZIP export. A real browser check exercised new-account creation, sign-in, Kaggle charts, review tables, individual prediction and Model quality. The account database was temporary, and no real student names were used.\nGoogle-hosted execution, remote Drive synchronization, czano@buse.ac.zw sharing permissions, the deployed site and the assessed presentation remain unverified. Local notebook execution and filesystem tests do not establish cloud authorization or delivery.\nLaunch the staff app with .\\run.ps1 -Full. Use .venv\\Scripts\\python.exe in the IDE. Sign up registers another account; Sign in uses an existing one. Select Kaggle academic performance for the new default task, or UCI grade reference for the earlier model. A missing sklearn error normally indicates the wrong environment or incomplete dependency installation.\nClass files are limited to 2 MiB and 5,000 rows. Invalid categories, out-of-range counts, missing fields, duplicate IDs and ambiguous names within a class are rejected. Uploads remain in session and are cleared by sign-out. Retain authorized original data and download reports explicitly."
+  },
+  {
+    "title": "Chapter 5 Final submission",
+    "dynamic": "milestones",
+    "sections": [
+      {
+        "heading": "5 1 Conclusions",
+        "text": "The project now integrates a documented Kaggle dataset into the staff app, training script and notebook. Logistic regression outperforms the baseline and forest in the defined grouped validation comparison, with test macro F1 of 0.776. The result supports an inspectable demonstration across the dataset’s 12 recorded topics.\nThe study does not establish reliable early warning, per-subject performance, attainment improvement or readiness for local institutional use. Future work should collect consistent student identifiers, measurement cutoff timestamps and later outcomes; define temporal or institution-held-out evaluation before viewing results; and examine subgroup errors and educator workload."
+      },
+      {
+        "heading": "5 2 Handover and demonstration",
+        "text": "The updated 15-minute demonstration guide covers the Kaggle workflow, repository, notebook and limitations. The existing 12-slide presentation is the earlier UCI edition and must be revised before it is used to present these new Kaggle results. The Word and PDF report are the current technical documentation.\nComplete the group number, names, student numbers and actual role allocations before submission. Rehearse with a demonstration account. Google authorization and recipient access need verification in the relevant account. Supervisor approval and assessed live delivery have not been claimed."
+      }
+    ]
+  },
+  {
+    "title": "References",
+    "paragraphs": [
+      "[1] Cortez, P. (2008). Student Performance [Dataset]. UCI Machine Learning Repository. DOI 10.24432/C5TG7T. https://archive.ics.uci.edu/dataset/320/student+performance",
+      "[2] Romero, C., and Ventura, S. (2020). Educational data mining and learning analytics: An updated survey. WIREs Data Mining and Knowledge Discovery, 10(3), e1355. https://doi.org/10.1002/widm.1355",
+      "[3] Pedregosa, F., et al. (2011). Scikit-learn: Machine Learning in Python. Journal of Machine Learning Research, 12, 2825-2830. https://jmlr.org/papers/v12/pedregosa11a.html",
+      "[4] Scikit-learn developers. Common pitfalls and recommended practices. Version 1.9.1 documentation, accessed 26 October 2026. https://scikit-learn.org/stable/common_pitfalls.html",
+      "[5] Angelopoulos, A. N., and Bates, S. (2021; revised 2022). A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification. arXiv:2107.07511. https://arxiv.org/abs/2107.07511",
+      "[6] Scikit-learn developers. Ensemble methods and randomized tree ensembles. Version 1.9.1 documentation, accessed 26 October 2026. https://scikit-learn.org/stable/modules/ensemble.html",
+      "[7] Project Jupyter. Installing Jupyter. Accessed 26 October 2026. https://jupyter.org/install",
+      "[8] Google. Colaboratory frequently asked questions. Accessed 26 October 2026. https://research.google.com/colaboratory/faq.html",
+      "[9] StudentInsight repository, application baseline 5af3632. https://github.com/GamerStudioszw/Student-Performance-Prediction",
+      "[10] Git project. git-clone reference. Accessed 28 October 2026. https://git-scm.com/docs/git-clone",
+      "[11] GitHub. Pushing commits to a remote repository. Accessed 28 October 2026. https://docs.github.com/en/get-started/using-git/pushing-commits-to-a-remote-repository",
+      "[12] Abu Amrieh, E., Hamtini, T., and Aljarah, I. Students’ Academic Performance Dataset xAPI-Edu-Data, Kaggle version 6. Dataset card and CSV accessed 28 October 2026. CC BY-SA 4.0. https://www.kaggle.com/datasets/aljarah/xAPI-Edu-Data"
+    ],
+    "after": "Current Kaggle evidence: data/kaggle/provenance.json, artifacts/kaggle/metrics.json and artifacts/kaggle/test_predictions.csv. The original CSV is preserved and attributed. Report source, figures and verification metadata are under documents/milestones/.\nEarlier UCI evaluations remain under artifacts/v3/ and artifacts/audits/. The original chapter-one proposal and UCI slide deck are historical materials; their older scope and results do not describe the new default classifier. No institutional participant study or supervisor approval is implied."
+  }
+]
