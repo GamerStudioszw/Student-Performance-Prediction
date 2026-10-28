@@ -19,8 +19,12 @@ require_login()
 st.caption("STAFF WORKSPACE · STUDENT ANALYTICS")
 st.title("Student Performance Analytics")
 st.write("Review class progress, compare groups, and plan student support.")
-subject = st.sidebar.selectbox("Subject", list(SUBJECTS), format_func=SUBJECTS.get, key="subject")
-if subject not in SUBJECTS:
+unavailable_subjects = [code for code in SUBJECTS if code not in PUBLIC_SUBJECTS]
+if st.session_state.get("subject") in unavailable_subjects:
+    st.session_state["subject"] = next(iter(PUBLIC_SUBJECTS))
+    st.session_state.pop("grade_report", None)
+subject = st.sidebar.selectbox("Subject", list(PUBLIC_SUBJECTS), format_func=PUBLIC_SUBJECTS.get, key="subject")
+if subject not in PUBLIC_SUBJECTS:
     st.error("Select a supported subject.")
     st.stop()
 

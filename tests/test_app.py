@@ -16,7 +16,6 @@ from model import ROOT, predict_grade
 from auth import AuthStore
 from cohort import csv_template
 from model_service import load_bundle
-from test_subject_training import history_fixture
 
 PASSWORD = "a private learning workspace"
 
@@ -339,51 +338,27 @@ class AppTests(unittest.TestCase):
             self.assertEqual(len(app.code), 0)
             self.assertEqual(list(Path(directory).iterdir()), [])
 
-    def test_new_subject_training_switching_and_session_isolation(self):
+    def test_only_dataset_backed_subjects_and_old_selection_recovers(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
         app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
         self.login(app)
-        for subject in ["eng", "phy", "chem", "bio", "geo", "hist", "cs"]:
-            app.selectbox(key="subject").set_value(subject).run()
-            self.assertEqual(len(app.exception), 0)
-            self.assertEqual(len(app.tabs), 0)
-            self.assertTrue(any("No reference dataset" in item.value for item in app.info))
-        app.selectbox(key="subject").set_value("eng").run()
-        content = history_fixture().to_csv(index=False).encode()
-        with patch("streamlit.file_uploader", return_value=BytesIO(content)):
-            app.run()
-            click(app, "Train English model")
-            self.assertEqual(len(app.exception), 0)
-            self.assertEqual(len(app.tabs), 4)
-            self.assertEqual(metric(app, "Students in view").value, "12")
-            saved = app.session_state["trained_subject_eng"]
-            self.assertEqual(saved["bundle"][1]["subject"], "eng")
-            held_out = set(saved["bundle"][1]["split_rows"]["test"])
-            fitting = set(saved["bundle"][1]["split_rows"]["train"])
-            self.assertFalse(held_out & fitting)
-            click(app, "Predict final grade")
-            self.assertEqual(len(app.exception), 0)
-            self.assertEqual(app.session_state["grade_report"]["report"].iloc[0]["subject"], "English")
-        with patch("streamlit.file_uploader", return_value=BytesIO(b"bad,columns\n1,2\n")):
-            app.run()
-            self.assertEqual(len(app.exception), 0)
-            self.assertEqual(len(app.tabs), 0)
-            self.assertEqual(len(app.metric), 0)
-        app.selectbox(key="subject").set_value("phy").run()
-        self.assertEqual(len(app.tabs), 0)
-        app.selectbox(key="subject").set_value("eng").run()
-        self.assertEqual(metric(app, "Students in view").value, "12")
-        other = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
-        self.login(other)
-        other.selectbox(key="subject").set_value("eng").run()
-        self.assertEqual(len(other.tabs), 0)
-        click(app, "Clear this subject model")
+        self.assertEqual(app.selectbox(key="subject").options,
+                         ["Mathematics", "Portuguese language"])
+        app.selectbox(key="subject").set_value("por").run()
+        self.assertEqual(metric(app, "Students in view").value, "130")
+        # Simulate an existing session from before unsupported subjects were removed.
+        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+        app.session_state["auth_token"] = AuthStore().login("alex", PASSWORD)
+        app.session_state["subject"] = "eng"
+        app.session_state["grade_report"] = {"subject": "eng", "report": None}
+        app.run()
         self.assertEqual(len(app.exception), 0)
-        self.assertEqual(len(app.tabs), 0)
-        with self.assertRaises(KeyError):
-            app.session_state["trained_subject_eng"]
-        click(app, "Sign out")
-        self.assertEqual(app.title[0].value, "Welcome back.")
+        self.assertEqual(app.selectbox(key="subject").value, "mat")
+        self.assertEqual(metric(app, "Students in view").value, "79")
+        self.assertNotIn("Train English model", [button.label for button in app.button])
+        click(app, "Predict final grade")
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(app.session_state["grade_report"]["report"].iloc[0]["subject"], "Mathematics")
 
     def test_minimal_inputs_and_downloads_match_displayed_forecast(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
