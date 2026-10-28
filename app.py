@@ -16,6 +16,11 @@ from cohort import export_csv, student_details
 
 st.set_page_config(page_title="StudentInsight | Staff analytics", page_icon="🎓", layout="wide")
 require_login()
+dataset = st.sidebar.selectbox("Dataset", ["Kaggle academic performance", "UCI grade reference"], key="analytics_dataset")
+if dataset == "Kaggle academic performance":
+    from kaggle_ui import render_kaggle_workspace
+    render_kaggle_workspace()
+    st.stop()
 st.caption("STAFF WORKSPACE · STUDENT ANALYTICS")
 st.title("Student Performance Analytics")
 st.write("Review class progress, compare groups, and plan student support.")

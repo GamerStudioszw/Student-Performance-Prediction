@@ -32,6 +32,12 @@ def metric(app, label):
     return next(item for item in app.metric if item.label == label)
 
 
+def legacy_app(*args, **kwargs):
+    app = AppTest.from_file(*args, **kwargs)
+    app.session_state['analytics_dataset'] = 'UCI grade reference'
+    return app
+
+
 class AppTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -45,10 +51,11 @@ class AppTests(unittest.TestCase):
         fill(app, "Username", "alex")
         fill(app, "Password", PASSWORD)
         click(app, "Sign in →")
+        app.selectbox(key="analytics_dataset").select("UCI grade reference").run()
         self.assertEqual(len(app.exception), 0)
 
     def test_first_time_setup(self):
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.assertEqual(len(app.exception), 0)
         self.assertEqual(len(app.tabs), 0)
         self.assertEqual(app.title[0].value, "Welcome back.")
@@ -86,7 +93,7 @@ class AppTests(unittest.TestCase):
     def test_render_and_predict(self):
         store = AuthStore()
         store.create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.assertEqual(len(app.exception), 0)
         self.assertEqual(app.title[0].value, "Welcome back.")
         self.assertEqual(len(app.tabs), 0)
@@ -141,7 +148,7 @@ class AppTests(unittest.TestCase):
     def test_revoked_session_returns_to_login(self):
         store = AuthStore()
         store.create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         store.logout(app.session_state["auth_token"])
         app.run()
@@ -150,7 +157,7 @@ class AppTests(unittest.TestCase):
         self.assertIn("session has ended", app.info[0].value)
 
     def test_empty_workspace_sign_in_explains_missing_account(self):
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         fill(app, "Username", "existing_elsewhere")
         fill(app, "Password", PASSWORD)
         click(app, "Sign in →")
@@ -162,7 +169,7 @@ class AppTests(unittest.TestCase):
     def test_additional_staff_can_register_and_sign_in(self):
         store = AuthStore()
         store.create_account("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.assertIn("Sign up", [button.label for button in app.button])
         captions = " ".join(item.value for item in app.caption)
         self.assertNotIn("registered with this app", captions)
@@ -196,7 +203,7 @@ class AppTests(unittest.TestCase):
     def test_blank_login_does_not_consume_attempts(self):
         store = AuthStore()
         store.create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         for _ in range(6):
             click(app, "Sign in →")
             self.assertIn("Enter your username and password", app.error[0].value)
@@ -204,7 +211,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(app.tabs), 4)
 
     def test_auth_navigation_clears_passwords(self):
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         click(app, "Sign up")
         fill(app, "Your name", "Alex Morgan")
         fill(app, "Username", "alex")
@@ -219,7 +226,7 @@ class AppTests(unittest.TestCase):
 
     def test_database_failure_does_not_expose_details_or_open_dashboard(self):
         AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         fill(app, "Username", "alex")
         fill(app, "Password", PASSWORD)
         with patch("auth.AuthStore.login", side_effect=sqlite3.OperationalError("private/database/path")):
@@ -232,7 +239,7 @@ class AppTests(unittest.TestCase):
 
     def test_invalid_profile_clears_previous_prediction(self):
         AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         click(app, "Predict final grade")
         self.assertIn("Estimated final grade", [item.label for item in app.metric])
@@ -245,7 +252,7 @@ class AppTests(unittest.TestCase):
 
     def test_named_single_student_report_and_identity_validation(self):
         AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         self.assertEqual(app.tabs[1].label, "Single-student prediction")
         fill(app, "Student name (optional)", "Tariro Moyo")
@@ -273,7 +280,7 @@ class AppTests(unittest.TestCase):
 
     def test_names_only_class_upload_search_and_download(self):
         AuthStore().create_account("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         content = b"student_name,class_name,G2\nTariro Moyo,Form 3A,12\nAlex Morgan,Form 3A,8\n"
         with patch("streamlit.file_uploader", return_value=BytesIO(content)):
@@ -292,7 +299,7 @@ class AppTests(unittest.TestCase):
 
     def test_dashboard_filters_and_upload_empty_state(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         groups = next(widget for widget in app.multiselect if widget.label == "Classes / groups")
         groups.set_value([]).run()
@@ -312,7 +319,7 @@ class AppTests(unittest.TestCase):
 
     def test_class_upload_renders_and_bad_upload_clears_dashboard(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=30).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=30).run()
         self.login(app)
         with patch("dashboard.st.file_uploader", return_value=BytesIO(csv_template())):
             app.radio(key="cohort_source").set_value("Upload class CSV").run()
@@ -330,7 +337,7 @@ class AppTests(unittest.TestCase):
         self.addCleanup(st.cache_resource.clear)
         with tempfile.TemporaryDirectory() as directory:
             with patch("model_service.load_bundle", side_effect=lambda subject: load_bundle(subject, artifact_dir=Path(directory))):
-                app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+                app = legacy_app(str(ROOT / "app.py"), default_timeout=60).run()
                 self.login(app)
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(app.tabs[0].label, "Class dashboard")
@@ -340,14 +347,14 @@ class AppTests(unittest.TestCase):
 
     def test_only_dataset_backed_subjects_and_old_selection_recovers(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=60).run()
         self.login(app)
         self.assertEqual(app.selectbox(key="subject").options,
                          ["Mathematics", "Portuguese language"])
         app.selectbox(key="subject").set_value("por").run()
         self.assertEqual(metric(app, "Students in view").value, "130")
         # Simulate an existing session from before unsupported subjects were removed.
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=60)
         app.session_state["auth_token"] = AuthStore().login("alex", PASSWORD)
         app.session_state["subject"] = "eng"
         app.session_state["grade_report"] = {"subject": "eng", "report": None}
@@ -362,7 +369,7 @@ class AppTests(unittest.TestCase):
 
     def test_minimal_inputs_and_downloads_match_displayed_forecast(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=60).run()
         self.login(app)
         self.assertNotIn("Weekly study time", [widget.label for widget in app.selectbox])
         self.assertIsNone(app.number_input(key="profile_G1").value)
@@ -383,7 +390,7 @@ class AppTests(unittest.TestCase):
 
     def test_minimal_class_upload_and_alert_exports_are_separate_from_model_test(self):
         AuthStore().create_owner("Alex Morgan", "alex", PASSWORD)
-        app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
+        app = legacy_app(str(ROOT / "app.py"), default_timeout=60).run()
         self.login(app)
         payload = b"student_id,class_name,G2,G3\na,Class A,9,9\nb,Class A,10,10\n"
         with patch("streamlit.file_uploader", return_value=BytesIO(payload)):
