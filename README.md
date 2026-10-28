@@ -98,7 +98,9 @@ The [notebook](notebooks/StudentInsight.ipynb) trains the same Kaggle classifier
 
 Section 1b saves a committed project snapshot when connected. Commit tracked changes first. Ignored accounts, credentials, environments, private uploads, binary models and untracked research downloads are excluded. The ZIP does not include Git history; recreate dependencies from requirements files.
 
-Experiment exports include Kaggle metrics, test predictions and the individual example alongside UCI reference outputs. Use `KAGGLE_CLASS_CSV` only for a Kaggle-schema file. The optional UCI class cell uses a different schema. `SAVE_REPORTS_TO_DRIVE` controls copying report ZIPs after connection.
+Experiment exports include Kaggle metrics, test predictions and the individual example alongside UCI reference outputs. Environment provenance records the Git revision and whether tracked files had local changes when exported. Use `KAGGLE_CLASS_CSV` only for a Kaggle-schema file. The optional UCI class cell uses a different schema. `SAVE_REPORTS_TO_DRIVE` controls copying report ZIPs after connection.
+
+A notebook saved in Drive is an independent copy. Reopen the GitHub Colab link for notebook updates and use a fresh runtime for updated project code. For local Jupyter, save your work, close the notebook, run `git pull --ff-only`, then reopen it and restart the kernel. The notebook's final section explains updates and supervisor sharing.
 
 Saving files **does not grant access**. Share the intended Drive folder or notebook with **czano@buse.ac.zw** as Viewer and verify the permission list. Google-hosted execution, remote synchronization and his access have not been verified from this session.
 
